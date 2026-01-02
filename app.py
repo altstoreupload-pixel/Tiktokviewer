@@ -72,40 +72,50 @@ def scrape_and_save():
 
 def worker_logic(target_url, total_views):
     global stats
-    scrape_and_save() # Automatically scrape and save to file every time you start
+    scrape_and_save() 
     
-    if not MASTER_PROXIES:
-        stats["running"] = False
-        return
+    # Realistic User-Agents to prevent "Bot" flagging
+    user_agents = [
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36",
+        "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/118.0.0.0 Safari/537.36",
+        "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36",
+        "Mozilla/5.0 (iPhone; CPU iPhone OS 17_1 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.1 Mobile/15E148 Safari/604.1"
+    ]
 
     for _ in range(total_views):
         if not stats["running"]: break
-            
-        success = False
-        retries = 0
         
-        while not success and retries < 2:
-            proxy = random.choice(MASTER_PROXIES)
-            proxies = {"http": f"http://{proxy}", "https": f"http://{proxy}"}
-            
-            try:
-                resp = requests.get(
-                    target_url, 
-                    proxies=proxies, 
-                    impersonate="chrome110", 
-                    timeout=10
-                )
-                if resp.status_code in [200, 204]:
-                    stats["sent"] += 1
-                    success = True
-                else:
-                    stats["errors"] += 1
-                    retries += 1
-            except:
+        proxy = random.choice(MASTER_PROXIES)
+        proxies = {"http": f"http://{proxy}", "https": f"http://{proxy}"}
+        
+        # Headers make the request look like a real browser click
+        headers = {
+            "User-Agent": random.choice(user_agents),
+            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
+            "Accept-Language": "en-US,en;q=0.5",
+            "Connection": "keep-alive",
+            "Upgrade-Insecure-Requests": "1",
+        }
+        
+        try:
+            # impersonate="chrome110" is the secret weapon here
+            # it mimics the TLS handshake of a real browser
+            resp = requests.get(
+                target_url, 
+                headers=headers,
+                proxies=proxies, 
+                impersonate="chrome110", 
+                timeout=12
+            )
+            if resp.status_code == 200:
+                stats["sent"] += 1
+            else:
                 stats["errors"] += 1
-                retries += 1
+        except:
+            stats["errors"] += 1
         
-        time.sleep(0.01)
+        # Random delay between 0.1 and 1.5 seconds to mimic human browsing speed
+        time.sleep(random.uniform(0.1, 1.5))
 
     stats["running"] = False
     stats["finished"] = True
@@ -135,3 +145,4 @@ def stop():
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 8000))
     app.run(host="0.0.0.0", port=port)
+
