@@ -22,21 +22,58 @@ status = {
     "proxies_loaded": 0
 }
 
+# FIXED: Added commas and high-capacity sources
 PROXY_SOURCES = [
-     "https://spys.one/en/http-proxy-list/",
+      "https://spys.one/en/http-proxy-list/",
     "https://free-proxy-list.net/en/anonymous-proxy.html",
     "https://proxylist.geonode.com/api/proxy-list?anonymityLevel=elite&protocols=socks5&limit=500&page=1&sort_by=lastChecked&sort_type=desc",
     "https://proxylist.geonode.com/api/proxy-list?anonymityLevel=elite&limit=500&page=1&sort_by=lastChecked&sort_type=desc",
-    "https://proxylist.geonode.com/api/proxy-list?anonymityLevel=anonymous&limit=500&page=1&sort_by=lastChecked&sort_type=desc"
-    "https://proxylist.geonode.com/api/proxy-list?anonymityLevel=elite&speed=fast&limit=500&page=1&sort_by=lastChecked&sort_type=desc"
-    "https://spys.one/en/anonymous-proxy-list/"
-  "https://api.lumiproxy.com/web_v1/free-proxy/list?page_size=60&page=1&anonymity=2&language=en-us"
-"https://api.lumiproxy.com/web_v1/free-proxy/list?page_size=60&page=1&protocol=2&anonymity=2&language=en-us"
+    "https://proxylist.geonode.com/api/proxy-list?anonymityLevel=anonymous&limit=500&page=1&sort_by=lastChecked&sort_type=desc",
+    "https://proxylist.geonode.com/api/proxy-list?anonymityLevel=elite&speed=fast&limit=500&page=1&sort_by=lastChecked&sort_type=desc",
+    "https://spys.one/en/anonymous-proxy-list/",
+    "https://api.lumiproxy.com/web_v1/free-proxy/list?page_size=60&page=1&anonymity=2&language=en-us",
+    "https://api.lumiproxy.com/web_v1/free-proxy/list?page_size=60&page=1&protocol=2&anonymity=2&language=en-us",
+    "https://88.198.212.91:3128",
+    "https://89.43.31.134:3128",
+    "https://47.90.149.238:1036",
+    "https://8.213.215.187:8080",
+    "https://8.213.215.187:9098",
+    "https://8.213.156.191:8444",
+    "https://47.92.82.167:7890",
+    "https://47.91.120.190:8888",
+    "https://47.252.11.233:1081",
+    "https://39.102.213.3:9080",
+    "https://47.252.11.233:1080",
+    "https://168.195.214.41:8800",
+    "https://8.215.3.250:80",
+    "https://8.210.17.35:8082",
+    "https://8.215.3.250:3128",
+    "https://47.91.29.151:4002",
+    "https://219.93.101.63:80",
+    "https://112.198.132.199:8082",
+    "https://47.90.149.238:9098",
+    "https://103.118.85.144:8080",
+    "https://8.213.222.247:6379",
+    "https://103.156.14.227:8080",
+    "https://47.237.107.41:3128",
+    "https://8.220.136.174:4567",
+    "https://157.10.89.203:8880",
+    "https://43.230.129.23:8080",
+    "https://87.239.31.42:80",
+    "https://raw.githubusercontent.com/TheSpeedX/SOCKS-List/master/http.txt",
+    "https://raw.githubusercontent.com/monosans/proxy-list/main/proxies/http.txt",
+    "https://raw.githubusercontent.com/ShiftyTR/Proxy-List/master/http.txt",
+    "https://api.proxyscrape.com/v2/?request=getproxies&protocol=http&timeout=10000&country=all&ssl=all&anonymity=all",
+    "https://proxylist.geonode.com/api/proxy-list?limit=500&page=1&sort_by=lastChecked&sort_type=desc",
+    "https://www.proxy-list.download/api/v1/get?type=http",
+    "https://www.proxyscan.io/download?type=http",
+    "https://spys.me/proxy.txt",
+    "https://8.220.204.215:9200"
 ]
 
-# Real-world referral sources to mimic organic discovery
+# Real-world referral sources
 REFERRERS = [
-    "https://www.google.com/search?q=tiktok+trending",
+   "https://www.google.com/search?q=tiktok+trending",
     "https://www.tiktok.com/discover?lang=en",
     "https://www.tiktok.com/search?q=foryou",
     "https://www.tiktok.com/@ahmed_elfallah",
@@ -45,17 +82,32 @@ REFERRERS = [
     "https://linktr.ee/",
     "https://t.co/", # Twitter/X shortener
     "https://www.facebook.com/"
+
 ]
 
 def scrape_proxies():
     combined = []
+    # Adding your manual list here first
+    manual_ips = [
+        "88.198.212.91:3128", "89.43.31.134:3128", "47.90.149.238:1036",
+        "8.213.215.187:8080", "8.213.215.187:9098", "8.213.156.191:8444",
+        "47.92.82.167:7890", "47.91.120.190:8888", "47.252.11.233:1081",
+        "39.102.213.3:9080", "47.252.11.233:1080", "168.195.214.41:8800"
+    ]
+    combined.extend(manual_ips)
+
     for url in PROXY_SOURCES:
         try:
-            res = requests.get(url, timeout=5)
+            # We use a longer timeout for scraping to get more results
+            res = requests.get(url, timeout=10)
             found = re.findall(r'\d+\.\d+\.\d+\.\d+:\d+', res.text)
             combined.extend(found)
         except: continue
-    return list(set(combined))
+    
+    # Remove duplicates
+    final_list = list(set(combined))
+    print(f"CRITICAL DEBUG: Total unique proxies loaded: {len(final_list)}", flush=True)
+    return final_list
 
 @app.route("/")
 def index(): return render_template("index.html")
@@ -81,7 +133,6 @@ def start():
     return jsonify({"ok": True})
 
 def human_worker(url, proxies_list):
-    """Mimics a human visitor using TLS 1.3, Headers, and Referrers."""
     while not stop_event.is_set():
         with status_lock:
             if status["sent"] >= status["total"]: return True
@@ -89,21 +140,17 @@ def human_worker(url, proxies_list):
         proxy = random.choice(proxies_list) if proxies_list else None
         proxies = {"http": f"http://{proxy}", "https": f"http://{proxy}"}
         
-        # Random human headers
         headers = {
             "User-Agent": ua.random,
             "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
-            "Accept-Language": random.choice(["en-US,en;q=0.9", "en-GB,en;q=0.8", "en-CA,en;q=0.9"]),
+            "Accept-Language": "en-US,en;q=0.9",
             "Referer": random.choice(REFERRERS),
-            "DNT": "1", # Do Not Track header often set by privacy-conscious users
             "Sec-Fetch-Dest": "document",
             "Sec-Fetch-Mode": "navigate",
             "Sec-Fetch-Site": "cross-site",
-            "Upgrade-Insecure-Requests": "1"
         }
 
         try:
-            # impersonate="chrome110" handles the TLS Fingerprint bypass
             r = requests.get(
                 url, 
                 headers=headers,
@@ -123,8 +170,7 @@ def human_worker(url, proxies_list):
         except:
             with status_lock: status["errors"] += 1
         
-        # Human-like thinking time/pause between retries
-        time.sleep(random.uniform(0.1, 0.5))
+        time.sleep(random.uniform(0.1, 0.4))
     return False
 
 def manage_execution(url, total):
@@ -132,8 +178,6 @@ def manage_execution(url, total):
     proxies = scrape_proxies()
     with status_lock: status["proxies_loaded"] = len(proxies)
 
-    # Use a lower worker count for higher quality. 
-    # High speed = High detection. Quality over quantity.
     with concurrent.futures.ThreadPoolExecutor(max_workers=15) as executor:
         futures = [executor.submit(human_worker, url, proxies) for _ in range(total)]
         concurrent.futures.wait(futures)
