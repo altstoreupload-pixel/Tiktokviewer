@@ -1,94 +1,247 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
-    <title>Stealth Traffic Engine</title>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Stealth Traffic Engine | Koyeb Edition</title>
     <style>
-        body { font-family: 'Segoe UI', Arial; background: #0a0a0a; color: #eee; text-align: center; padding-top: 50px; }
-        .card { max-width: 450px; margin: auto; background: #151515; padding: 40px; border-radius: 15px; border: 1px solid #333; box-shadow: 0 10px 30px rgba(0,0,0,0.5); }
-        h2 { color: #fff; letter-spacing: 1px; }
-        input { padding: 12px; width: 85%; margin: 10px 0; background: #222; color: #00ff41; border: 1px solid #444; border-radius: 5px; outline: none; }
-        button { padding: 12px 25px; border: none; cursor: pointer; border-radius: 5px; font-weight: bold; margin: 10px 5px; transition: 0.3s; }
+        :root {
+            --bg: #0a0a0b;
+            --card: #141417;
+            --primary: #00ff88;
+            --error: #ff3e3e;
+            --text: #e0e0e0;
+        }
+
+        body { 
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif; 
+            background: var(--bg); 
+            color: var(--text); 
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            margin: 0;
+        }
+
+        .container { 
+            width: 100%;
+            max-width: 450px; 
+            background: var(--card); 
+            padding: 2rem; 
+            border-radius: 20px; 
+            box-shadow: 0 20px 50px rgba(0,0,0,0.5);
+            border: 1px solid #2d2d33;
+        }
+
+        h2 { margin-top: 0; font-weight: 700; letter-spacing: -0.5px; color: #fff; }
+
+        .input-group { margin-bottom: 1.5rem; text-align: left; }
+        label { display: block; font-size: 12px; color: #888; margin-bottom: 5px; margin-left: 5px; }
+
+        input { 
+            width: 100%; 
+            padding: 12px 15px; 
+            background: #1d1d21; 
+            border: 1px solid #333; 
+            border-radius: 10px; 
+            color: var(--primary); 
+            font-size: 14px;
+            box-sizing: border-box;
+            outline: none;
+            transition: border 0.3s;
+        }
+
+        input:focus { border-color: var(--primary); }
+
+        .btn-row { display: flex; gap: 10px; }
+
+        button { 
+            flex: 1;
+            padding: 14px; 
+            border: none; 
+            border-radius: 10px; 
+            font-weight: 700; 
+            cursor: pointer; 
+            transition: all 0.2s;
+        }
+
+        #startBtn { background: var(--primary); color: #000; }
+        #startBtn:hover { background: #00db75; transform: translateY(-2px); }
+        #startBtn:disabled { background: #222; color: #555; transform: none; cursor: not-allowed; }
+
+        #stopBtn { background: #222; color: var(--error); border: 1px solid #333; display: none; }
+        #stopBtn:hover { background: #2a1a1a; }
+
+        /* Progress Section */
+        #progress-container { margin-top: 2rem; display: none; }
+        .bar-bg { width: 100%; height: 10px; background: #222; border-radius: 20px; overflow: hidden; margin-bottom: 10px; }
+        #progress-bar { width: 0%; height: 100%; background: var(--primary); transition: width 0.4s ease; }
         
-        #startBtn { background: #00c853; color: black; }
-        #stopBtn { background: #ff1744; color: white; display: none; }
-        #startBtn:disabled { background: #333; color: #777; cursor: not-allowed; }
-        
-        #bar { width: 100%; height: 12px; background: #222; border-radius: 10px; margin: 25px 0; overflow: hidden; display: none; }
-        #progress { height: 100%; width: 0%; background: #00c853; transition: width 0.2s linear; }
-        
-        #info { font-size: 18px; margin: 15px 0; font-weight: bold; }
-        #success-msg { color: #00e676; font-size: 19px; font-weight: bold; margin-top: 20px; display: none; }
-        .stats { font-size: 11px; color: #555; margin-top: 10px; }
+        .stats-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 15px; }
+        .stat-box { background: #1d1d21; padding: 10px; border-radius: 8px; text-align: center; }
+        .stat-val { display: block; font-size: 18px; font-weight: bold; color: #fff; }
+        .stat-label { font-size: 10px; color: #666; text-transform: uppercase; }
+
+        #success-msg { color: var(--primary); font-weight: bold; margin-top: 15px; display: none; }
+
+        /* Debug Logger */
+        #debug-console { 
+            margin-top: 20px; 
+            background: #000; 
+            padding: 10px; 
+            border-radius: 8px; 
+            font-family: monospace; 
+            font-size: 10px; 
+            color: #555; 
+            height: 60px; 
+            overflow-y: auto;
+            text-align: left;
+            border: 1px solid #1a1a1a;
+        }
     </style>
 </head>
 <body>
 
-<div class="card">
-    <h2>STEALTH ENGINE</h2>
-    <input id="url" placeholder="Enter Destination URL">
-    <input id="views" type="number" placeholder="Enter Target Quantity">
+<div class="container">
+    <h2>Stealth Engine</h2>
+    
+    <div class="input-group">
+        <label>TARGET URL</label>
+        <input id="url" type="text" placeholder="https://www.tiktok.com/..." autocomplete="off">
+    </div>
 
-    <button id="startBtn" onclick="start()">START ENGINE</button>
-    <button id="stopBtn" onclick="stop()">ABORT</button>
+    <div class="input-group">
+        <label>VIEW QUANTITY</label>
+        <input id="views" type="number" placeholder="e.g. 500">
+    </div>
 
-    <div id="bar"><div id="progress"></div></div>
+    <div class="btn-row">
+        <button id="startBtn" onclick="startEngine()">START ENGINE</button>
+        <button id="stopBtn" onclick="stopEngine()">ABORT</button>
+    </div>
 
-    <p id="info">System Ready</p>
-    <div id="success-msg">The operation completed successfully enjoy!!</div>
-    <div id="details" class="stats"></div>
+    <div id="progress-container">
+        <div class="bar-bg">
+            <div id="progress-bar"></div>
+        </div>
+        
+        <div id="info" style="font-weight: bold; color: var(--primary);">Connecting...</div>
+
+        <div class="stats-grid">
+            <div class="stat-box">
+                <span id="stat-proxies" class="stat-val">0</span>
+                <span class="stat-label">Proxies</span>
+            </div>
+            <div class="stat-box">
+                <span id="stat-errors" class="stat-val">0</span>
+                <span class="stat-label">Retries</span>
+            </div>
+        </div>
+
+        <div id="success-msg">MISSION COMPLETE! ENJOY YOUR VIEWS.</div>
+    </div>
+
+    <div id="debug-console">System logs initialized...</div>
 </div>
 
 <script>
-async function start() {
-    const url = document.getElementById("url").value;
-    const views = document.getElementById("views").value;
-    if(!url || !views) return;
+    let isPolling = false;
 
-    document.getElementById("startBtn").disabled = true;
-    document.getElementById("stopBtn").style.display = "inline-block";
-    document.getElementById("bar").style.display = "block";
-    document.getElementById("success-msg").style.display = "none";
-    document.getElementById("progress").style.width = "0%";
-    document.getElementById("info").innerText = "Initializing Stealth...";
+    function log(msg) {
+        const consoleEl = document.getElementById("debug-console");
+        const time = new Date().toLocaleTimeString().split(' ')[0];
+        consoleEl.innerHTML = `[${time}] ${msg}<br>` + consoleEl.innerHTML;
+    }
 
-    await fetch("/start", {
-        method: "POST",
-        headers: {"Content-Type": "application/json"},
-        body: JSON.stringify({url, views})
-    });
+    async function startEngine() {
+        const url = document.getElementById("url").value;
+        const views = document.getElementById("views").value;
 
-    poll();
-}
+        if(!url || !views) {
+            log("Error: Missing URL or Quantity");
+            return;
+        }
 
-async function stop() {
-    await fetch("/stop", { method: "POST" });
-}
+        document.getElementById("startBtn").disabled = true;
+        document.getElementById("stopBtn").style.display = "inline-block";
+        document.getElementById("progress-container").style.display = "block";
+        document.getElementById("success-msg").style.display = "none";
+        log("Sending start command to Koyeb...");
 
-async function poll() {
-    const res = await fetch("/status");
-    const data = await res.json();
+        try {
+            const res = await fetch("/start", {
+                method: "POST",
+                headers: {"Content-Type": "application/json"},
+                body: JSON.stringify({url: url, views: views})
+            });
+            const data = await res.json();
+            
+            if(data.ok) {
+                log("Engine started successfully.");
+                isPolling = true;
+                poll();
+            } else {
+                log("Server rejected: " + data.error);
+                resetUI();
+            }
+        } catch (e) {
+            log("Connection error: " + e.message);
+            resetUI();
+        }
+    }
 
-    // Sync bar to exactly what the server verified
-    const currentSent = Math.min(data.sent, data.total);
-    const percent = (currentSent / data.total) * 100;
-    
-    document.getElementById("progress").style.width = percent + "%";
-    document.getElementById("info").innerText = `Verified: ${currentSent} / ${data.total}`;
-    document.getElementById("details").innerText = `Detection Retries: ${data.errors} | Proxies: ${data.proxies_loaded}`;
+    async function stopEngine() {
+        log("Aborting...");
+        await fetch("/stop", { method: "POST" });
+        resetUI();
+    }
 
-    if (data.finished || (data.sent >= data.total && data.total > 0)) {
-        document.getElementById("success-msg").style.display = "block";
-        document.getElementById("startBtn").disabled = false;
-        document.getElementById("stopBtn").style.display = "none";
-        document.getElementById("progress").style.width = "100%";
-        document.getElementById("info").innerText = "Finished";
-    } else if (data.running) {
-        setTimeout(poll, 400);
-    } else {
+    function resetUI() {
+        isPolling = false;
         document.getElementById("startBtn").disabled = false;
         document.getElementById("stopBtn").style.display = "none";
     }
-}
+
+    async function poll() {
+        if(!isPolling) return;
+
+        try {
+            const res = await fetch("/status");
+            const data = await res.json();
+
+            // Calculate progress
+            const sent = data.sent || 0;
+            const total = data.total || 1;
+            const percentage = Math.min((sent / total) * 100, 100);
+
+            // Update UI Elements
+            document.getElementById("progress-bar").style.width = percentage + "%";
+            document.getElementById("info").innerText = `VERIFIED: ${sent} / ${total}`;
+            document.getElementById("stat-proxies").innerText = data.proxies_loaded || 0;
+            document.getElementById("stat-errors").innerText = data.errors || 0;
+
+            if (data.finished) {
+                log("Operation Finished.");
+                document.getElementById("success-msg").style.display = "block";
+                resetUI();
+                return;
+            }
+
+            if (!data.running && !data.finished) {
+                log("Engine stopped by user.");
+                resetUI();
+                return;
+            }
+
+            // Loop polling
+            setTimeout(poll, 1000);
+
+        } catch (e) {
+            log("Status check failed, retrying...");
+            setTimeout(poll, 2000);
+        }
+    }
 </script>
 
 </body>
