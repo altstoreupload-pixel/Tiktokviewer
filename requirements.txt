@@ -1,1 +1,3 @@
-Flask==2.x.x
+Flask==2.3.2
+requests==2.31.0
+colorama==0.4.6
