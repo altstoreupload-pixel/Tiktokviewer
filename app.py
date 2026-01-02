@@ -1,87 +1,60 @@
+from flask import Flask, request, jsonify, send_from_directory
 import threading
-import requests
-import tkinter as tk
-from tkinter import messagebox
 import time
+import os
 
-# ================= CONFIG =================
-REQUEST_DELAY = 0.3   # seconds between requests
-TIMEOUT = 10
-HEADERS = {
-    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"
+app = Flask(__name__, static_folder="static")
+
+# Global state
+state = {
+    "running": False,
+    "progress": 0,
+    "total": 0
 }
-# =========================================
 
+def simulate_views(target_url, total_views):
+    state["running"] = True
+    state["progress"] = 0
+    state["total"] = total_views
 
-class TrafficApp:
-    def __init__(self, root):
-        self.root = root
-        self.root.title("Website Traffic Sender")
-        self.root.geometry("420x260")
-        self.root.resizable(False, False)
+    for i in range(total_views):
+        time.sleep(0.5)  # simulate sending a view
+        state["progress"] += 1
 
-        tk.Label(root, text="Target URL", font=("Arial", 12)).pack(pady=5)
-        self.url_entry = tk.Entry(root, width=50)
-        self.url_entry.pack()
+    state["running"] = False
 
-        tk.Label(root, text="Number of Requests", font=("Arial", 12)).pack(pady=5)
-        self.count_entry = tk.Entry(root, width=20)
-        self.count_entry.pack()
+# Serve frontend
+@app.route("/")
+def home():
+    return send_from_directory("static", "index.html")
 
-        self.start_btn = tk.Button(
-            root,
-            text="START",
-            bg="green",
-            fg="white",
-            font=("Arial", 14, "bold"),
-            command=self.start
-        )
-        self.start_btn.pack(pady=20, ipadx=20, ipady=5)
+# API to start simulation
+@app.route("/start", methods=["POST"])
+def start():
+    if state["running"]:
+        return jsonify({"error": "Already running"}), 400
 
-        self.status = tk.Label(root, text="Idle", font=("Arial", 10))
-        self.status.pack()
+    data = request.json
+    target_url = data.get("url")
+    views = int(data.get("views", 0))
 
-    def start(self):
-        url = self.url_entry.get().strip()
-        try:
-            count = int(self.count_entry.get().strip())
-        except:
-            messagebox.showerror("Error", "Enter a valid number")
-            return
+    if not target_url or views <= 0:
+        return jsonify({"error": "Invalid input"}), 400
 
-        if not url.startswith("http"):
-            messagebox.showerror("Error", "Enter a valid URL")
-            return
+    thread = threading.Thread(
+        target=simulate_views,
+        args=(target_url, views),
+        daemon=True
+    )
+    thread.start()
 
-        self.start_btn.config(state=tk.DISABLED, bg="gray")
-        self.status.config(text="Running...")
+    return jsonify({"message": "Started"})
 
-        thread = threading.Thread(
-            target=self.send_requests,
-            args=(url, count),
-            daemon=True
-        )
-        thread.start()
-
-    def send_requests(self, url, count):
-        sent = 0
-        for i in range(count):
-            try:
-                requests.get(url, headers=HEADERS, timeout=TIMEOUT)
-                sent += 1
-                self.status.config(text=f"Sent {sent}/{count}")
-            except:
-                pass
-            time.sleep(REQUEST_DELAY)
-
-        self.root.after(0, self.finish)
-
-    def finish(self):
-        self.status.config(text="Done")
-        self.start_btn.config(state=tk.NORMAL, bg="green")
-
+# API to check progress
+@app.route("/progress")
+def progress():
+    return jsonify(state)
 
 if __name__ == "__main__":
-    root = tk.Tk()
-    app = TrafficApp(root)
-    root.mainloop()
+    port = int(os.environ.get("PORT", 10000))
+    app.run(host="0.0.0.0", port=port)
