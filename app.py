@@ -10,20 +10,26 @@ from fake_useragent import UserAgent
 app = Flask(__name__)
 ua = UserAgent()
 
-# Global status tracking
+# CONFIGURATION: Set your proxy link here
+PROXY_LIST_URL = "https://advanced.name/freeproxy/6957799dd74e6?type=https"
+
+# Global state
 status = {
     "running": False,
     "sent": 0,
     "total": 0
 }
 
-def load_proxies():
-    """Reads proxies from proxies.txt and cleans them."""
+def load_proxies_from_url():
+    """Fetches a list of proxies from a remote URL."""
     try:
-        with open("proxies.txt", "r") as f:
-            # Filters out empty lines and comments
-            return [line.strip() for line in f if line.strip() and not line.startswith("#")]
-    except FileNotFoundError:
+        response = requests.get(PROXY_LIST_URL, timeout=10)
+        if response.status_code == 200:
+            # Clean and filter the list
+            return [line.strip() for line in response.text.splitlines() if line.strip() and not line.startswith("#")]
+        return []
+    except Exception as e:
+        print(f"Error fetching proxies: {e}")
         return []
 
 @app.route("/")
@@ -46,72 +52,63 @@ def start():
     if not url or total <= 0:
         return jsonify({"error": "Invalid input"})
 
-    # Launch background thread to manage the execution pool
+    # Launch background thread to handle the request pool
     thread = threading.Thread(target=manage_execution, args=(url, total))
     thread.start()
 
     return jsonify({"ok": True})
 
 def send_single_request(url, proxies_list):
-    """
-    Simulates a unique browser user.
-    Uses random User-Agents, unique UUIDs, and proxy rotation.
-    """
+    """Mimics a unique human browser user."""
     proxy_str = random.choice(proxies_list) if proxies_list else None
     proxies = {"http": proxy_str, "https": proxy_str} if proxy_str else None
     
-    # Advanced Headers to mimic a real web browser
+    # Advanced Browser Fingerprint
     headers = {
         "User-Agent": ua.random,
-        "Accept": "application/json, text/plain, */*",
+        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
+        "Accept-Language": "en-US,en;q=0.5",
         "Accept-Encoding": "gzip, deflate, br",
-        "Accept-Language": "en-US,en;q=0.9",
-        "Content-Type": "application/json",
-        "Origin": url.split('/')[2] if '/' in url else "",
-        "Referer": url,
-        "X-Requested-With": "XMLHttpRequest"
+        "DNT": "1", # Do Not Track
+        "Connection": "keep-alive",
+        "Upgrade-Insecure-Requests": "1",
+        "Referer": "https://www.google.com/",
+        "X-Request-ID": str(uuid.uuid4())
     }
 
-    # Unique payload mimicking the bypass script's UUID usage
+    # Unique payload data for the target
     payload = {
         "session_id": str(uuid.uuid4()),
-        "device_id": str(uuid.uuid4()),
-        "timestamp": int(time.time()),
-        "action": "view"
+        "client_timestamp": int(time.time()),
+        "platform": "web_desktop"
     }
 
     try:
-        # 10-second timeout ensures dead proxies don't hang the worker
+        # Use 10s timeout to avoid hanging on slow proxies
         response = requests.post(url, json=payload, headers=headers, proxies=proxies, timeout=10)
-        
-        # Check for 200 OK and handle potential "wait" responses from the server
-        if response.status_code == 200:
-            res_json = response.json()
-            # If the server provides a cooldown timestamp, we could log it here
-            return True
+        return response.ok
     except:
-        pass
-    return False
+        return False
 
 def manage_execution(url, total):
-    """Manages the thread pool and updates progress."""
     global status
-    proxies_list = load_proxies()
+    # Fetch fresh proxies from your link at the start of the run
+    proxies_list = load_proxies_from_url()
+    
     status["running"] = True
     status["sent"] = 0
     status["total"] = total
 
-    # Use 10 threads to send requests concurrently (similar to the bypass script)
+    # workers=10 allows for high concurrency (multitasking)
     with concurrent.futures.ThreadPoolExecutor(max_workers=10) as executor:
-        # Create a list of tasks
-        futures = {executor.submit(send_single_request, url, proxies_list): i for i in range(total)}
+        futures = [executor.submit(send_single_request, url, proxies_list) for _ in range(total)]
         
         for future in concurrent.futures.as_completed(futures):
             if future.result():
                 status["sent"] += 1
             
-            # Add 'jitter' - small random delays to look more human
-            time.sleep(random.uniform(0.05, 0.15))
+            # Tiny random jitter to break the "robotic" pattern
+            time.sleep(random.uniform(0.01, 0.05))
 
     status["running"] = False
 
