@@ -22,11 +22,11 @@ status = {
 
 # Sources that provide raw text proxy lists
 PROXY_SOURCES = [
-    "https://raw.githubusercontent.com/TheSpeedX/SOCKS-List/master/http.txt",
-    "https://raw.githubusercontent.com/ShiftyTR/Proxy-List/master/http.txt",
-    "https://raw.githubusercontent.com/monosans/proxy-list/main/proxies/http.txt",
-    "https://api.proxyscrape.com/v2/?request=getproxies&protocol=http&timeout=10000&country=all&ssl=all&anonymity=all",
-    "https://www.proxy-list.download/api/v1/get?type=https"
+    "https://spys.one/en/http-proxy-list/",
+    "https://free-proxy-list.net/en/anonymous-proxy.html",
+    "https://proxylist.geonode.com/api/proxy-list?anonymityLevel=elite&protocols=socks5&limit=500&page=1&sort_by=lastChecked&sort_type=desc",
+    "https://proxylist.geonode.com/api/proxy-list?anonymityLevel=elite&limit=500&page=1&sort_by=lastChecked&sort_type=desc",
+    "https://proxylist.geonode.com/api/proxy-list?anonymityLevel=anonymous&limit=500&page=1&sort_by=lastChecked&sort_type=desc"
 ]
 
 def scrape_proxies():
@@ -125,3 +125,4 @@ def manage_execution(url, total):
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=8000)
+
