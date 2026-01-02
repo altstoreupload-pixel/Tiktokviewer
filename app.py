@@ -2,6 +2,7 @@ from flask import Flask, render_template, request, jsonify
 import threading
 import time
 import random
+import requests
 import re
 import concurrent.futures
 from curl_cffi import requests
@@ -133,33 +134,42 @@ def start():
     return jsonify({"ok": True})
 
 def human_worker(url, proxies_list):
+    """Koyeb-specific worker with enhanced error reporting."""
+    session = requests.Session() # Using a session is faster on cloud hosts
+    
     while not stop_event.is_set():
         with status_lock:
             if status["sent"] >= status["total"]: return True
 
-        proxy = random.choice(proxies_list) if proxies_list else None
-        proxies = {"http": f"http://{proxy}", "https": f"http://{proxy}"}
+        # For testing: 50% chance to use proxy, 50% direct
+        # This helps identify if the proxies are the problem or the server
+        use_proxy = random.choice([True, False])
+        proxy = random.choice(proxies_list) if (proxies_list and use_proxy) else None
+        
+        proxy_config = {"http": f"http://{proxy}", "https": f"http://{proxy}"} if proxy else None
         
         headers = {
             "User-Agent": ua.random,
-            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
-            "Accept-Language": "en-US,en;q=0.9",
-            "Referer": random.choice(REFERRERS),
-            "Sec-Fetch-Dest": "document",
-            "Sec-Fetch-Mode": "navigate",
-            "Sec-Fetch-Site": "cross-site",
+            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8",
+            "Accept-Language": "en-US,en;q=0.5",
+            "Connection": "keep-alive",
+            "Upgrade-Insecure-Requests": "1"
         }
 
         try:
-            r = requests.get(
+            # timeout=5 is better for Koyeb to keep threads moving
+            r = session.get(
                 url, 
-                headers=headers,
-                proxies=proxies,
-                timeout=12,
-                impersonate="chrome110" 
+                headers=headers, 
+                proxies=proxy_config, 
+                timeout=5,
+                verify=False # Prevents SSL handshake failures on cloud containers
             )
             
-            if r.status_code in [200, 204]:
+            # This logs into your Koyeb "Logs" tab
+            print(f"KOYEB DEBUG: {url} | Status: {r.status_code} | Proxy: {use_proxy}", flush=True)
+
+            if r.status_code == 200:
                 with status_lock:
                     if status["sent"] < status["total"]:
                         status["sent"] += 1
@@ -167,10 +177,12 @@ def human_worker(url, proxies_list):
                         return True
             else:
                 with status_lock: status["errors"] += 1
-        except:
+        except Exception as e:
+            # If you see "Connection Refused" here, Koyeb is blocking the outbound port
+            print(f"KOYEB ERROR: {str(e)[:50]}", flush=True)
             with status_lock: status["errors"] += 1
         
-        time.sleep(random.uniform(0.1, 0.4))
+        time.sleep(0.5)
     return False
 
 def manage_execution(url, total):
@@ -188,3 +200,4 @@ def manage_execution(url, total):
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=8000)
+
