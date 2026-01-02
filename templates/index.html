@@ -1,33 +1,33 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <title>High-Speed Traffic Engine</title>
+    <title>Precision Traffic Engine</title>
     <style>
-        body { font-family: 'Segoe UI', sans-serif; background: #0a0a0a; color: #eee; text-align: center; padding-top: 50px; }
-        .container { max-width: 450px; margin: auto; background: #141414; padding: 40px; border-radius: 15px; border: 1px solid #333; box-shadow: 0 10px 30px rgba(0,0,0,0.5); }
-        input { padding: 12px; width: 85%; margin: 10px 0; background: #1e1e1e; color: #00ff41; border: 1px solid #444; border-radius: 5px; }
-        button { padding: 12px 25px; border: none; cursor: pointer; border-radius: 5px; font-weight: bold; margin: 10px 5px; text-transform: uppercase; transition: 0.2s; }
+        body { font-family: 'Segoe UI', Arial; background: #0a0a0a; color: #eee; text-align: center; padding-top: 50px; }
+        .container { max-width: 450px; margin: auto; background: #151515; padding: 40px; border-radius: 15px; border: 1px solid #333; }
+        input { padding: 12px; width: 85%; margin: 10px 0; background: #222; color: #00ff41; border: 1px solid #444; border-radius: 5px; }
+        button { padding: 12px 25px; border: none; cursor: pointer; border-radius: 5px; font-weight: bold; margin: 10px 5px; }
         #startBtn { background: #00c853; color: black; }
         #stopBtn { background: #ff1744; color: white; display: none; }
-        #bar { width: 100%; height: 14px; background: #222; border-radius: 10px; margin: 25px 0; overflow: hidden; display: none; }
-        #progress { height: 100%; width: 0%; background: #00c853; transition: width 0.1s linear; }
-        #success-msg { color: #00e676; font-size: 18px; font-weight: bold; margin-top: 20px; display: none; }
-        .stats { font-size: 11px; color: #555; margin-top: 10px; }
+        #bar { width: 100%; height: 12px; background: #222; border-radius: 10px; margin: 25px 0; overflow: hidden; display: none; }
+        #progress { height: 100%; width: 0%; background: #00c853; transition: width 0.2s linear; }
+        #success-msg { color: #00e676; font-size: 19px; font-weight: bold; margin-top: 20px; display: none; }
+        .stats { font-size: 11px; color: #666; margin-top: 10px; }
     </style>
 </head>
 <body>
 
 <div class="container">
-    <h2>Traffic Engine</h2>
-    <input id="url" placeholder="Enter Target URL">
-    <input id="views" type="number" placeholder="Enter Target Amount">
+    <h2>Traffic Sender</h2>
+    <input id="url" placeholder="https://target-url.com">
+    <input id="views" type="number" placeholder="Amount of views">
 
-    <button id="startBtn" onclick="start()">Launch</button>
-    <button id="stopBtn" onclick="stop()">Abort</button>
+    <button id="startBtn" onclick="start()">START</button>
+    <button id="stopBtn" onclick="stop()">STOP</button>
 
     <div id="bar"><div id="progress"></div></div>
 
-    <p id="info">Standby</p>
+    <p id="info">System Ready</p>
     <div id="success-msg">The operation completed successfully enjoy!!</div>
     <div class="stats" id="details"></div>
 </div>
@@ -61,22 +61,23 @@ async function poll() {
     const res = await fetch("/status");
     const data = await res.json();
 
-    // Only allow visual numbers up to the requested total
-    const displaySent = Math.min(data.sent, data.total);
-    const percent = (displaySent / data.total) * 100;
+    // Force synchronization: Only update bar based on server-verified hits
+    const currentSent = Math.min(data.sent, data.total);
+    const percent = (currentSent / data.total) * 100;
     
     document.getElementById("progress").style.width = percent + "%";
-    document.getElementById("info").innerText = `${displaySent} / ${data.total} SUCCESSFUL`;
-    document.getElementById("details").innerText = `System Failures: ${data.errors}`;
+    document.getElementById("info").innerText = `${currentSent} / ${data.total} SUCCESSFUL`;
+    document.getElementById("details").innerText = `Total Attempts/Fails: ${data.errors}`;
 
-    if (data.sent >= data.total && data.total > 0) {
+    // STRICT FINISH CHECK: Only show green message if data.finished is true
+    if (data.finished) {
         document.getElementById("success-msg").style.display = "block";
         document.getElementById("startBtn").disabled = false;
         document.getElementById("stopBtn").style.display = "none";
         document.getElementById("progress").style.width = "100%";
-        document.getElementById("info").innerText = "FINISHED";
+        document.getElementById("info").innerText = "Operation Finished";
     } else if (data.running) {
-        setTimeout(poll, 400); // Polling every 0.4s
+        setTimeout(poll, 500); // Poll every 0.5s for smooth updates
     } else {
         document.getElementById("startBtn").disabled = false;
         document.getElementById("stopBtn").style.display = "none";
