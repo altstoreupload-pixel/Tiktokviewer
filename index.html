@@ -1,0 +1,64 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<title>View Simulator</title>
+<style>
+body { font-family: Arial; text-align: center; margin-top: 50px; }
+button { padding: 10px 20px; font-size: 16px; }
+#start { background-color: green; color: white; }
+.disabled { background-color: gray; cursor: not-allowed; }
+#progress-bar { width:80%; height:25px; background:#eee; margin:20px auto; border-radius:5px; }
+#progress { height:100%; width:0; background:green; border-radius:5px; }
+</style>
+</head>
+<body>
+
+<h2>Traffic Simulator</h2>
+
+<input type="text" id="url" placeholder="Enter URL" style="width: 300px;"><br><br>
+<input type="number" id="views" placeholder="Number of views" style="width: 150px;"><br><br>
+
+<button id="start">Start</button>
+
+<div id="progress-bar"><div id="progress"></div></div>
+
+<script>
+const btn = document.getElementById("start");
+const progressEl = document.getElementById("progress");
+
+btn.addEventListener("click", () => {
+    const url = document.getElementById("url").value;
+    const views = parseInt(document.getElementById("views").value);
+
+    if (!url || !views) return;
+
+    btn.disabled = true;
+    btn.classList.add("disabled");
+
+    fetch("/start", {
+        method:"POST",
+        headers: {"Content-Type":"application/json"},
+        body: JSON.stringify({url, views})
+    });
+
+    const interval = setInterval(() => {
+        fetch("/progress")
+            .then(res=>res.json())
+            .then(data => {
+                let pct = 0;
+                if (data.total > 0) pct = (data.progress/data.total)*100;
+                progressEl.style.width = pct + "%";
+
+                if (!data.running) {
+                    clearInterval(interval);
+                    btn.disabled = false;
+                    btn.classList.remove("disabled");
+                }
+            });
+    }, 500);
+});
+</script>
+
+</body>
+</html>
