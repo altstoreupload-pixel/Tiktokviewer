@@ -1,0 +1,73 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>View Sender</title>
+<style>
+  body { font-family: Arial, sans-serif; margin: 50px; }
+  input[type="text"], input[type="number"] { padding: 8px; width: 300px; margin: 5px 0; }
+  button { padding: 10px 20px; font-size: 16px; cursor: pointer; }
+  button.green { background-color: #28a745; color: white; }
+  button.grey { background-color: grey; color: white; cursor: not-allowed; }
+  #progress-bar { width: 100%; background-color: #ddd; margin-top: 20px; }
+  #progress-bar-fill { width: 0%; height: 30px; background-color: #28a745; text-align: center; color: white; line-height: 30px; }
+</style>
+</head>
+<body>
+<h2>Send Views</h2>
+
+<label>Video URL:</label><br>
+<input type="text" id="video_url" placeholder="Enter video URL"><br>
+
+<label>Number of Views:</label><br>
+<input type="number" id="target_views" placeholder="Enter target views"><br>
+
+<button id="start-btn" class="green" onclick="startSending()">Start</button>
+
+<div id="progress-bar">
+  <div id="progress-bar-fill">0%</div>
+</div>
+
+<script>
+let intervalId;
+
+function startSending() {
+    const videoUrl = document.getElementById('video_url').value;
+    const targetViews = document.getElementById('target_views').value;
+
+    if (!videoUrl || !targetViews) {
+        alert("Please enter video URL and target views.");
+        return;
+    }
+
+    const btn = document.getElementById('start-btn');
+    btn.className = 'grey';
+    btn.disabled = true;
+
+    fetch('/start', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ video_url: videoUrl, target_views: targetViews })
+    }).then(res => res.json()).then(data => {
+        intervalId = setInterval(updateProgress, 200);
+    });
+}
+
+function updateProgress() {
+    fetch('/progress').then(res => res.json()).then(data => {
+        const fill = document.getElementById('progress-bar-fill');
+        const percent = Math.round((data.progress / data.target) * 100);
+        fill.style.width = percent + '%';
+        fill.innerText = percent + '%';
+
+        if (!data.running) {
+            clearInterval(intervalId);
+            const btn = document.getElementById('start-btn');
+            btn.className = 'green';
+            btn.disabled = false;
+        }
+    });
+}
+</script>
+</body>
+</html>
