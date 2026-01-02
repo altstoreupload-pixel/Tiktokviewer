@@ -1,0 +1,47 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>View Sender</title>
+<style>
+    #startBtn { padding: 10px 20px; font-size: 18px; }
+    #startBtn.running { background-color: grey; color: white; cursor: not-allowed; }
+    #startBtn.ready { background-color: green; color: white; cursor: pointer; }
+</style>
+</head>
+<body>
+<h1>View Sender</h1>
+<input type="number" id="totalViews" placeholder="Total views to send" value="1000">
+<button id="startBtn" class="ready">Start</button>
+<p id="status"></p>
+<script>
+const startBtn = document.getElementById("startBtn");
+const statusEl = document.getElementById("status");
+
+startBtn.onclick = async () => {
+    const totalViews = parseInt(document.getElementById("totalViews").value);
+    startBtn.classList.remove("ready");
+    startBtn.classList.add("running");
+    startBtn.disabled = true;
+
+    await fetch("/start", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ total_views: totalViews })
+    });
+
+    const interval = setInterval(async () => {
+        const res = await fetch("/status");
+        const data = await res.json();
+        statusEl.textContent = `Sent ${data.views_sent}/${data.total_views} views`;
+        if (!data.running) {
+            startBtn.classList.remove("running");
+            startBtn.classList.add("ready");
+            startBtn.disabled = false;
+            clearInterval(interval);
+        }
+    }, 200);
+};
+</script>
+</body>
+</html>
