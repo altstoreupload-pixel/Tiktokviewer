@@ -5,37 +5,49 @@ import random
 import requests
 import uuid
 import concurrent.futures
+import re
 from fake_useragent import UserAgent
 
 app = Flask(__name__)
 ua = UserAgent()
-
-# CONFIGURATION: Set your proxy link here
-PROXY_LIST_URL = "https://spys.one/free-proxy-list/ALL/"
 
 status = {
     "running": False,
     "sent": 0,
     "total": 0,
     "errors": 0,
-    "last_error": "None"
+    "last_error": "None",
+    "proxies_loaded": 0
 }
 
-def load_proxies_from_url():
-    """Fetches proxies and reports if the link itself is broken."""
-    try:
-        print(f"[*] Fetching proxy list from: {PROXY_LIST_URL}")
-        response = requests.get(PROXY_LIST_URL, timeout=15)
-        if response.status_code == 200:
-            proxies = [line.strip() for line in response.text.splitlines() if line.strip()]
-            print(f"[+] Successfully loaded {len(proxies)} proxies.")
-            return proxies
-        else:
-            status["last_error"] = f"Proxy Link Error: Status {response.status_code}"
-            return []
-    except Exception as e:
-        status["last_error"] = f"Failed to reach Proxy Link: {str(e)}"
-        return []
+# Sources that provide raw text proxy lists
+PROXY_SOURCES = [
+    "https://raw.githubusercontent.com/TheSpeedX/SOCKS-List/master/http.txt",
+    "https://raw.githubusercontent.com/ShiftyTR/Proxy-List/master/http.txt",
+    "https://raw.githubusercontent.com/monosans/proxy-list/main/proxies/http.txt",
+    "https://api.proxyscrape.com/v2/?request=getproxies&protocol=http&timeout=10000&country=all&ssl=all&anonymity=all",
+    "https://www.proxy-list.download/api/v1/get?type=https"
+]
+
+def scrape_proxies():
+    """Aggregates proxies from multiple open-source repositories."""
+    combined_proxies = []
+    print("[*] Scaping fresh proxies from 5 sources...")
+    
+    for url in PROXY_SOURCES:
+        try:
+            response = requests.get(url, timeout=10)
+            if response.status_code == 200:
+                # Use regex to find anything that looks like an IP:Port
+                found = re.findall(r'\d+\.\d+\.\d+\.\d+:\d+', response.text)
+                combined_proxies.extend(found)
+        except:
+            continue
+            
+    # Remove duplicates
+    unique_proxies = list(set(combined_proxies))
+    print(f"[+] Total unique proxies found: {len(unique_proxies)}")
+    return unique_proxies
 
 @app.route("/")
 def index():
@@ -49,77 +61,67 @@ def get_status():
 def start():
     if status["running"]:
         return jsonify({"error": "Already running"})
-
+    
     data = request.json
     url = data.get("url")
     total = int(data.get("views", 0))
-
-    if not url or total <= 0:
-        return jsonify({"error": "Invalid input"})
-
-    thread = threading.Thread(target=manage_execution, args=(url, total))
-    thread.start()
+    
+    threading.Thread(target=manage_execution, args=(url, total)).start()
     return jsonify({"ok": True})
 
 def send_single_request(url, proxies_list):
-    """Sends request and captures specific error messages."""
+    """Execution logic with specific error trapping for 403s."""
     if not proxies_list:
-        return False, "No proxies available"
+        return False, "No Proxies"
 
     proxy_str = random.choice(proxies_list)
-    proxies = {"http": proxy_str, "https": proxy_str}
+    proxies = {"http": f"http://{proxy_str}", "https": f"http://{proxy_str}"}
     
     headers = {
         "User-Agent": ua.random,
         "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-        "Referer": "https://www.google.com/"
+        "Accept-Language": "en-US,en;q=0.5",
+        "Connection": "keep-alive",
+        "Upgrade-Insecure-Requests": "1"
     }
 
     try:
-        # We MUST use allow_redirects for links to count
-        response = requests.get(url, headers=headers, proxies=proxies, timeout=12, allow_redirects=True)
-        
-        if response.status_code == 200:
+        # allow_redirects is critical for tracking views
+        resp = requests.get(url, headers=headers, proxies=proxies, timeout=10, allow_redirects=True)
+        if resp.status_code == 200:
             return True, None
-        else:
-            return False, f"Server returned {response.status_code}"
-    except requests.exceptions.ProxyError:
-        return False, "Proxy Refused Connection"
-    except requests.exceptions.Timeout:
-        return False, "Proxy Timed Out"
+        return False, f"Error {resp.status_code}"
     except Exception as e:
-        return False, str(e)
+        return False, "Connection Failed"
 
 def manage_execution(url, total):
     global status
-    status["sent"] = 0
-    status["errors"] = 0
-    status["running"] = True
+    status.update({"sent": 0, "errors": 0, "running": True, "last_error": "None"})
     
-    proxies_list = load_proxies_from_url()
-    
+    # Scrape fresh proxies right before starting
+    proxies_list = scrape_proxies()
+    status["proxies_loaded"] = len(proxies_list)
+
     if not proxies_list:
         status["running"] = False
-        print("[!] Execution stopped: No proxies found.")
+        status["last_error"] = "Could not scrape any proxies"
         return
 
-    with concurrent.futures.ThreadPoolExecutor(max_workers=10) as executor:
+    with concurrent.futures.ThreadPoolExecutor(max_workers=15) as executor:
         futures = [executor.submit(send_single_request, url, proxies_list) for _ in range(total)]
         
         for future in concurrent.futures.as_completed(futures):
-            success, error_msg = future.result()
+            success, err = future.result()
             if success:
                 status["sent"] += 1
             else:
                 status["errors"] += 1
-                status["last_error"] = error_msg
-                print(f"[X] Request Failed: {error_msg}")
+                status["last_error"] = err
             
-            time.sleep(random.uniform(0.01, 0.05))
+            # Tiny jitter to look human
+            time.sleep(random.uniform(0.01, 0.03))
 
     status["running"] = False
-    print("--- Task Finished ---")
 
 if __name__ == "__main__":
-
     app.run(host="0.0.0.0", port=8000)
