@@ -11,7 +11,7 @@ app = Flask(__name__)
 ua = UserAgent()
 
 # CONFIGURATION: Set your proxy link here
-PROXY_LIST_URL = "https://advanced.name/freeproxy/6957799dd74e6?type=https"
+PROXY_LIST_URL = "https://spys.one/free-proxy-list/ALL/"
 
 status = {
     "running": False,
@@ -121,4 +121,5 @@ def manage_execution(url, total):
     print("--- Task Finished ---")
 
 if __name__ == "__main__":
+
     app.run(host="0.0.0.0", port=8000)
