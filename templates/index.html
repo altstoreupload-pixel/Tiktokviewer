@@ -1,61 +1,49 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <title>Advanced Traffic Engine</title>
+    <title>Traffic Sender Pro</title>
     <style>
-        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background: #0a0a0a; color: #f0f0f0; text-align: center; padding-top: 50px; }
-        .card { max-width: 450px; margin: auto; background: #161616; padding: 40px; border-radius: 20px; border: 1px solid #333; box-shadow: 0 10px 30px rgba(0,0,0,0.5); }
-        h2 { margin-bottom: 25px; color: #fff; letter-spacing: 1px; }
-        input { padding: 14px; width: 85%; margin: 10px 0; background: #222; color: #00c853; border: 1px solid #444; border-radius: 8px; outline: none; transition: 0.3s; }
-        input:focus { border-color: #00c853; box-shadow: 0 0 10px rgba(0,200,83,0.2); }
-        
-        button { padding: 14px 28px; font-size: 14px; border: none; cursor: pointer; border-radius: 8px; font-weight: bold; margin: 15px 5px; text-transform: uppercase; transition: 0.3s; }
-        #startBtn { background: #00c853; color: #000; }
-        #startBtn:hover { background: #00e676; transform: translateY(-2px); }
-        #stopBtn { background: #ff1744; color: #fff; display: none; }
-        #startBtn:disabled { background: #333; color: #666; cursor: not-allowed; transform: none; }
-        
-        #bar { width: 100%; height: 12px; background: #222; border-radius: 10px; margin: 30px 0; overflow: hidden; display: none; border: 1px solid #333; }
-        #progress { height: 100%; width: 0%; background: linear-gradient(90deg, #00c853, #b2ff59); transition: width 0.4s cubic-bezier(0.1, 0.7, 1.0, 0.1); }
-        
-        #info { font-size: 18px; margin: 15px 0; font-weight: 500; }
-        #success-msg { color: #00e676; font-size: 22px; font-weight: bold; margin-top: 25px; display: none; text-shadow: 0 0 10px rgba(0,230,118,0.3); }
+        body { font-family: 'Segoe UI', sans-serif; background: #0a0a0a; color: #eee; text-align: center; padding-top: 50px; }
+        .container { max-width: 450px; margin: auto; background: #151515; padding: 40px; border-radius: 15px; border: 1px solid #333; }
+        input { padding: 12px; width: 85%; margin: 10px 0; background: #222; color: #00ff41; border: 1px solid #444; border-radius: 5px; outline: none; }
+        button { padding: 12px 25px; border: none; cursor: pointer; border-radius: 5px; font-weight: bold; margin: 10px 5px; transition: 0.3s; }
+        #startBtn { background: #00c853; color: black; }
+        #stopBtn { background: #ff1744; color: white; display: none; }
+        #startBtn:disabled { background: #333; color: #777; cursor: not-allowed; }
+        #bar { width: 100%; height: 12px; background: #222; border-radius: 10px; margin: 25px 0; overflow: hidden; display: none; }
+        #progress { height: 100%; width: 0%; background: #00c853; transition: width 0.3s linear; }
+        #success-msg { color: #00e676; font-size: 18px; font-weight: bold; margin-top: 20px; display: none; }
         .stats { font-size: 11px; color: #555; margin-top: 10px; }
     </style>
 </head>
 <body>
 
-<div class="card">
+<div class="container">
     <h2>TRAFFIC ENGINE</h2>
-    
-    <input id="url" placeholder="Enter Destination URL"><br>
-    <input id="views" type="number" placeholder="Enter View Quantity"><br>
+    <input id="url" placeholder="Destination URL">
+    <input id="views" type="number" placeholder="Total Views Required">
 
-    <button id="startBtn" onclick="start()">Launch Engine</button>
-    <button id="stopBtn" onclick="stop()">Emergency Stop</button>
+    <button id="startBtn" onclick="start()">START ENGINE</button>
+    <button id="stopBtn" onclick="stop()">STOP ENGINE</button>
 
-    <div id="bar">
-        <div id="progress"></div>
-    </div>
+    <div id="bar"><div id="progress"></div></div>
 
-    <p id="info">System Standby</p>
+    <p id="info">System Ready</p>
     <div id="success-msg">The operation completed successfully enjoy!!</div>
-    <div class="stats" id="error-log"></div>
+    <div id="details" class="stats"></div>
 </div>
 
 <script>
 async function start() {
     const url = document.getElementById("url").value;
     const views = document.getElementById("views").value;
-
-    if(!url || !views) return alert("Please fill in all parameters.");
+    if(!url || !views) return;
 
     document.getElementById("startBtn").disabled = true;
     document.getElementById("stopBtn").style.display = "inline-block";
     document.getElementById("bar").style.display = "block";
     document.getElementById("success-msg").style.display = "none";
     document.getElementById("progress").style.width = "0%";
-    document.getElementById("info").innerText = "Initializing Proxies...";
 
     await fetch("/start", {
         method: "POST",
@@ -68,7 +56,7 @@ async function start() {
 
 async function stop() {
     await fetch("/stop", { method: "POST" });
-    document.getElementById("info").innerText = "Operation Aborted.";
+    document.getElementById("info").innerText = "Aborted.";
 }
 
 async function poll() {
@@ -76,11 +64,10 @@ async function poll() {
     const data = await res.json();
 
     if (data.total > 0) {
-        // Ensure percentage never exceeds 100%
         const percent = Math.min((data.sent / data.total) * 100, 100);
         document.getElementById("progress").style.width = percent + "%";
-        document.getElementById("info").innerText = `HITS: ${data.sent} / ${data.total}`;
-        document.getElementById("error-log").innerText = `Failures/Retries: ${data.errors} | Loaded: ${data.proxies_loaded}`;
+        document.getElementById("info").innerText = `Progress: ${data.sent} / ${data.total}`;
+        document.getElementById("details").innerText = `Attempts/Retries: ${data.errors} | Proxies: ${data.proxies_loaded}`;
     }
 
     if (data.finished || (data.sent >= data.total && data.total > 0)) {
@@ -90,13 +77,12 @@ async function poll() {
         document.getElementById("progress").style.width = "100%";
         document.getElementById("info").innerText = "Operation Complete";
     } else if (data.running) {
-        setTimeout(poll, 400); // Polling every 0.4s for smooth UI
+        setTimeout(poll, 400); // Poll every 400ms for smooth bar
     } else {
         document.getElementById("startBtn").disabled = false;
         document.getElementById("stopBtn").style.display = "none";
     }
 }
 </script>
-
 </body>
 </html>
