@@ -1,4 +1,5 @@
 import os
+import re
 import random
 import threading
 import time
@@ -14,19 +15,19 @@ stats = {
 
 MASTER_PROXIES = []
 
-def fetch_and_combine():
-    """Combines proxies from proxies.txt AND your provided URLs."""
+def scrape_and_save():
+    """Fetches proxies from URLs, extracts them via Regex, and saves to proxies.txt."""
     global MASTER_PROXIES
-    new_list = []
-
-    # 1. Load manual proxies from proxies.txt
+    
+    # 1. Start with what's already in the file
+    existing_proxies = set()
     if os.path.exists("proxies.txt"):
         with open("proxies.txt", "r") as f:
-            new_list.extend([line.strip() for line in f if line.strip()])
+            existing_proxies = {line.strip() for line in f if line.strip()}
 
-    # 2. Scrape the URLs you provided
+    # 2. Scrape the URLs
     sources = [
-        "https://raw.githubusercontent.com/TheSpeedX/SOCKS-List/master/http.txt",
+   "https://raw.githubusercontent.com/TheSpeedX/SOCKS-List/master/http.txt",
     "https://raw.githubusercontent.com/monosans/proxy-list/main/proxies/http.txt",
     "https://raw.githubusercontent.com/ShiftyTR/Proxy-List/master/http.txt",
     "https://api.proxyscrape.com/v2/?request=getproxies&protocol=http&timeout=10000&country=all&ssl=all&anonymity=all",
@@ -45,24 +46,33 @@ def fetch_and_combine():
     "https://api.lumiproxy.com/web_v1/free-proxy/list?page_size=60&page=1&protocol=2&anonymity=2&language=en-us"
     ]
 
+    scraped_count = 0
+    # Pattern to find IP:PORT (e.g. 192.168.1.1:8080)
+    proxy_pattern = re.compile(r'\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}:\d{2,5}')
+
     for url in sources:
         try:
-            # We use a simple request to fetch the text lists
-            r = requests.get(url, timeout=10)
+            r = requests.get(url, timeout=15)
             if r.status_code == 200:
-                # Basic cleaning to find IP:PORT patterns
-                found = r.text.splitlines()
-                new_list.extend([p.strip() for p in found if ":" in p])
+                found = proxy_pattern.findall(r.text)
+                for p in found:
+                    if p not in existing_proxies:
+                        existing_proxies.add(p)
+                        scraped_count += 1
         except:
             continue
 
-    MASTER_PROXIES = list(set(new_list)) # Remove duplicates
+    # 3. Update the file with the NEW combined list
+    MASTER_PROXIES = list(existing_proxies)
+    with open("proxies.txt", "w") as f:
+        f.write("\n".join(MASTER_PROXIES))
+    
     stats["proxies_loaded"] = len(MASTER_PROXIES)
-    print(f"DEBUG: Engine ready with {len(MASTER_PROXIES)} total proxies.")
+    print(f"DEBUG: Added {scraped_count} new proxies. Total database: {len(MASTER_PROXIES)}")
 
 def worker_logic(target_url, total_views):
     global stats
-    fetch_and_combine() # Refresh list on every start
+    scrape_and_save() # Automatically scrape and save to file every time you start
     
     if not MASTER_PROXIES:
         stats["running"] = False
@@ -95,7 +105,7 @@ def worker_logic(target_url, total_views):
                 stats["errors"] += 1
                 retries += 1
         
-        time.sleep(0.01) # High speed
+        time.sleep(0.01)
 
     stats["running"] = False
     stats["finished"] = True
