@@ -22,12 +22,17 @@ status = {
     "finished": False
 }
 
+# High-quality free proxy sources
 PROXY_SOURCES = [
     "https://spys.one/en/http-proxy-list/",
     "https://free-proxy-list.net/en/anonymous-proxy.html",
     "https://proxylist.geonode.com/api/proxy-list?anonymityLevel=elite&protocols=socks5&limit=500&page=1&sort_by=lastChecked&sort_type=desc",
     "https://proxylist.geonode.com/api/proxy-list?anonymityLevel=elite&limit=500&page=1&sort_by=lastChecked&sort_type=desc",
     "https://proxylist.geonode.com/api/proxy-list?anonymityLevel=anonymous&limit=500&page=1&sort_by=lastChecked&sort_type=desc"
+    "https://proxylist.geonode.com/api/proxy-list?anonymityLevel=elite&speed=fast&limit=500&page=1&sort_by=lastChecked&sort_type=desc"
+    "https://spys.one/en/anonymous-proxy-list/"
+  "https://api.lumiproxy.com/web_v1/free-proxy/list?page_size=60&page=1&anonymity=2&language=en-us"
+"https://api.lumiproxy.com/web_v1/free-proxy/list?page_size=60&page=1&protocol=2&anonymity=2&language=en-us"
 ]
 
 def scrape_proxies():
@@ -62,33 +67,38 @@ def start():
     data = request.json
     stop_event.clear()
     status.update({
-        "sent": 0, "total": int(data.get("views", 0)), 
-        "errors": 0, "running": True, "finished": False
+        "sent": 0, 
+        "total": int(data.get("views", 0)), 
+        "errors": 0, 
+        "running": True, 
+        "finished": False,
+        "last_error": "None"
     })
     
     threading.Thread(target=manage_execution, args=(data.get("url"), status["total"])).start()
     return jsonify({"ok": True})
 
 def persistent_request(url, proxies_list):
-    """Retries with different proxies until ONE success is achieved."""
-    while not stop_event.is_set():
+    """Retries with different proxies until success or the hard limit is hit."""
+    # Safety: Stop if user hits stop OR if another thread already finished the job
+    while not stop_event.is_set() and status["sent"] < status["total"]:
         proxy_str = random.choice(proxies_list) if proxies_list else None
         proxies = {"http": f"http://{proxy_str}", "https": f"http://{proxy_str}"}
         
         try:
+            # Short timeout to skip dead proxies fast
             with requests.get(url, headers={"User-Agent": ua.random}, proxies=proxies, timeout=5, allow_redirects=True) as r:
                 if r.status_code == 200:
-                    status["sent"] += 1
-                    return True
+                    # Thread-safe check before incrementing
+                    if status["sent"] < status["total"]:
+                        status["sent"] += 1
+                        return True
                 else:
                     status["errors"] += 1
-                    status["last_error"] = f"HTTP {r.status_code}"
-        except Exception as e:
+        except:
             status["errors"] += 1
-            status["last_error"] = "Proxy Failed/Timed Out"
             
-        # Optional: tiny delay between retries to prevent local CPU spike
-        time.sleep(0.01)
+        time.sleep(0.01) # Small pause to prevent CPU locking
     return False
 
 def manage_execution(url, total):
@@ -101,13 +111,18 @@ def manage_execution(url, total):
         status["last_error"] = "No proxies found"
         return
 
-    # Using 100 workers for maximum speed through bad proxies
-    with concurrent.futures.ThreadPoolExecutor(max_workers=100) as executor:
+    # Use 50 workers for high-speed concurrency
+    with concurrent.futures.ThreadPoolExecutor(max_workers=50) as executor:
         futures = [executor.submit(persistent_request, url, proxies) for _ in range(total)]
-        concurrent.futures.wait(futures)
+        
+        # Monitor threads and kill if limit reached
+        for _ in concurrent.futures.as_completed(futures):
+            if status["sent"] >= total or stop_event.is_set():
+                stop_event.set() # Trigger immediate stop for all active loops
+                break
 
     status["running"] = False
-    if not stop_event.is_set():
+    if status["sent"] >= total:
         status["finished"] = True
 
 if __name__ == "__main__":
