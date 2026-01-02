@@ -1,52 +1,16 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <title>Traffic Sender</title>
+    <title>High-Speed Traffic Sender</title>
     <style>
-        body {
-            font-family: Arial;
-            background: #111;
-            color: white;
-            text-align: center;
-            padding-top: 50px;
-        }
-
-        input {
-            padding: 10px;
-            width: 300px;
-            margin: 5px;
-        }
-
-        button {
-            padding: 12px 30px;
-            font-size: 16px;
-            border: none;
-            cursor: pointer;
-            border-radius: 5px;
-        }
-
-        #startBtn {
-            background: #00c853;
-            color: black;
-        }
-
-        #startBtn:disabled {
-            background: grey;
-            cursor: not-allowed;
-        }
-
-        #bar {
-            width: 300px;
-            height: 20px;
-            border: 1px solid white;
-            margin: 20px auto;
-        }
-
-        #progress {
-            height: 100%;
-            width: 0%;
-            background: #00c853;
-        }
+        body { font-family: Arial; background: #111; color: white; text-align: center; padding-top: 50px; }
+        input { padding: 10px; width: 300px; margin: 5px; background: #222; color: white; border: 1px solid #444; }
+        button { padding: 12px 30px; font-size: 16px; border: none; cursor: pointer; border-radius: 5px; }
+        #startBtn { background: #00c853; color: black; font-weight: bold; }
+        #startBtn:disabled { background: #333; color: #777; cursor: not-allowed; }
+        #bar { width: 350px; height: 25px; border: 1px solid #444; margin: 20px auto; background: #222; border-radius: 10px; overflow: hidden; }
+        #progress { height: 100%; width: 0%; background: linear-gradient(90deg, #00c853, #b2ff59); transition: width 0.3s ease; }
+        .stats { color: #aaa; font-size: 14px; margin-top: 10px; }
     </style>
 </head>
 <body>
@@ -56,20 +20,24 @@
 <input id="url" placeholder="https://your-site.com"><br>
 <input id="views" type="number" placeholder="Number of visits"><br>
 
-<button id="startBtn" onclick="start()">START</button>
+<button id="startBtn" onclick="start()">START EXECUTION</button>
 
 <div id="bar">
     <div id="progress"></div>
 </div>
 
-<p id="info"></p>
+<p id="info">Ready</p>
+<div class="stats" id="error-log"></div>
 
 <script>
 async function start() {
     const url = document.getElementById("url").value;
     const views = document.getElementById("views").value;
 
+    if(!url || !views) return alert("Please fill all fields");
+
     document.getElementById("startBtn").disabled = true;
+    document.getElementById("info").innerText = "Scraping Proxies & Starting...";
 
     await fetch("/start", {
         method: "POST",
@@ -87,14 +55,15 @@ async function poll() {
     if (data.total > 0) {
         const percent = (data.sent / data.total) * 100;
         document.getElementById("progress").style.width = percent + "%";
-        document.getElementById("info").innerText =
-            `${data.sent} / ${data.total}`;
+        document.getElementById("info").innerText = `Progress: ${data.sent} / ${data.total}`;
+        document.getElementById("error-log").innerText = `Errors: ${data.errors} | Last Error: ${data.last_error}`;
     }
 
     if (data.running) {
-        setTimeout(poll, 500);
+        setTimeout(poll, 800); // Polling every 800ms for smooth updates
     } else {
         document.getElementById("startBtn").disabled = false;
+        document.getElementById("info").innerText = data.sent > 0 ? "Task Finished" : "Task Failed (Check Proxies)";
     }
 }
 </script>
