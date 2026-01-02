@@ -1,60 +1,81 @@
-from flask import Flask, request, jsonify, send_from_directory
-import threading
+from flask import Flask, request, jsonify
 import time
-import os
+from threading import Thread
 
-app = Flask(__name__, static_folder="static")
+app = Flask(__name__)
 
-# Global state
-state = {
-    "running": False,
-    "progress": 0,
-    "total": 0
-}
+# Dictionary to store progress per task
+tasks_progress = {}
 
-def simulate_views(target_url, total_views):
-    state["running"] = True
-    state["progress"] = 0
-    state["total"] = total_views
+def send_views(task_id, video_url, total_views):
+    """Simulate sending views in background."""
+    sent = 0
+    while sent < total_views:
+        time.sleep(1)  # simulate network delay
+        sent += 1
+        tasks_progress[task_id] = sent
+    tasks_progress[task_id] = total_views  # mark as done
 
-    for i in range(total_views):
-        time.sleep(0.5)  # simulate sending a view
-        state["progress"] += 1
+@app.route('/')
+def index():
+    return '''
+    <h1>Viewer Bot Simulator</h1>
+    <form action="/start" method="post">
+      Video URL: <input type="text" name="video_url"><br>
+      Number of Views: <input type="number" name="views"><br>
+      <input type="submit" value="Start" id="startBtn">
+    </form>
+    <div id="progress"></div>
+    <script>
+      const form = document.querySelector('form');
+      const progressDiv = document.getElementById('progress');
+      const startBtn = document.getElementById('startBtn');
 
-    state["running"] = False
+      form.addEventListener('submit', async e => {
+        e.preventDefault();
+        startBtn.disabled = true;
+        startBtn.style.backgroundColor = 'grey';
+        const video_url = form.video_url.value;
+        const views = form.views.value;
+        const res = await fetch('/start', {
+          method: 'POST',
+          headers: {'Content-Type':'application/json'},
+          body: JSON.stringify({video_url, views})
+        });
+        const data = await res.json();
+        const task_id = data.task_id;
 
-# Serve frontend
-@app.route("/")
-def home():
-    return send_from_directory("static", "index.html")
+        const interval = setInterval(async () => {
+          const progRes = await fetch('/progress/' + task_id);
+          const progData = await progRes.json();
+          progressDiv.innerHTML = `Progress: ${progData.sent}/${views}`;
+          if (progData.sent >= views) {
+            clearInterval(interval);
+            startBtn.disabled = false;
+            startBtn.style.backgroundColor = 'green';
+          }
+        }, 500);
+      });
+    </script>
+    '''
 
-# API to start simulation
-@app.route("/start", methods=["POST"])
-def start():
-    if state["running"]:
-        return jsonify({"error": "Already running"}), 400
+@app.route('/start', methods=['POST'])
+def start_task():
+    data = request.get_json()
+    video_url = data.get('video_url')
+    views = int(data.get('views', 0))
+    task_id = str(time.time()).replace('.', '')
+    tasks_progress[task_id] = 0
 
-    data = request.json
-    target_url = data.get("url")
-    views = int(data.get("views", 0))
-
-    if not target_url or views <= 0:
-        return jsonify({"error": "Invalid input"}), 400
-
-    thread = threading.Thread(
-        target=simulate_views,
-        args=(target_url, views),
-        daemon=True
-    )
+    # Start background thread
+    thread = Thread(target=send_views, args=(task_id, video_url, views))
     thread.start()
+    return jsonify({'task_id': task_id})
 
-    return jsonify({"message": "Started"})
+@app.route('/progress/<task_id>')
+def progress(task_id):
+    sent = tasks_progress.get(task_id, 0)
+    return jsonify({'sent': sent})
 
-# API to check progress
-@app.route("/progress")
-def progress():
-    return jsonify(state)
-
-if __name__ == "__main__":
-    port = int(os.environ.get("PORT", 10000))
-    app.run(host="0.0.0.0", port=port)
+if __name__ == '__main__':
+    app.run(host='0.0.0.0', port=5000)
