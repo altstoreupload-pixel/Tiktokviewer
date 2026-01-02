@@ -3,15 +3,14 @@ import threading
 import time
 import random
 import requests
-import uuid
-import concurrent.futures
 import re
+import concurrent.futures
 from fake_useragent import UserAgent
 
 app = Flask(__name__)
 ua = UserAgent()
 
-# Global Control
+# Global Controls
 stop_event = threading.Event()
 status = {
     "running": False,
@@ -51,7 +50,7 @@ def get_status():
 
 @app.route("/stop", methods=["POST"])
 def stop():
-    stop_event.set() # Signals all threads to stop immediately
+    stop_event.set()
     status["running"] = False
     return jsonify({"ok": True})
 
@@ -61,53 +60,54 @@ def start():
         return jsonify({"error": "Already running"})
     
     data = request.json
-    url = data.get("url")
-    total = int(data.get("views", 0))
-    
-    # Reset for fresh run
     stop_event.clear()
     status.update({
-        "sent": 0, "total": total, "errors": 0, 
-        "running": True, "finished": False, "last_error": "None"
+        "sent": 0, "total": int(data.get("views", 0)), 
+        "errors": 0, "running": True, "finished": False
     })
     
-    threading.Thread(target=manage_execution, args=(url, total)).start()
+    threading.Thread(target=manage_execution, args=(data.get("url"), status["total"])).start()
     return jsonify({"ok": True})
 
-def send_single_request(url, proxies_list):
-    if stop_event.is_set(): # Stop midway check
-        return False, "Stopped"
-
-    proxy_str = random.choice(proxies_list) if proxies_list else None
-    proxies = {"http": f"http://{proxy_str}", "https": f"http://{proxy_str}"} if proxy_str else None
-    headers = {"User-Agent": ua.random}
-    
-    try:
-        resp = requests.get(url, headers=headers, proxies=proxies, timeout=5, allow_redirects=True)
-        return resp.ok, None
-    except Exception as e:
-        return False, "Fail"
+def persistent_request(url, proxies_list):
+    """Retries with different proxies until ONE success is achieved."""
+    while not stop_event.is_set():
+        proxy_str = random.choice(proxies_list) if proxies_list else None
+        proxies = {"http": f"http://{proxy_str}", "https": f"http://{proxy_str}"}
+        
+        try:
+            with requests.get(url, headers={"User-Agent": ua.random}, proxies=proxies, timeout=5, allow_redirects=True) as r:
+                if r.status_code == 200:
+                    status["sent"] += 1
+                    return True
+                else:
+                    status["errors"] += 1
+                    status["last_error"] = f"HTTP {r.status_code}"
+        except Exception as e:
+            status["errors"] += 1
+            status["last_error"] = "Proxy Failed/Timed Out"
+            
+        # Optional: tiny delay between retries to prevent local CPU spike
+        time.sleep(0.01)
+    return False
 
 def manage_execution(url, total):
     global status
-    proxies_list = scrape_proxies()
-    status["proxies_loaded"] = len(proxies_list)
+    proxies = scrape_proxies()
+    status["proxies_loaded"] = len(proxies)
 
-    with concurrent.futures.ThreadPoolExecutor(max_workers=50) as executor:
-        futures = [executor.submit(send_single_request, url, proxies_list) for _ in range(total)]
-        
-        for future in concurrent.futures.as_completed(futures):
-            if stop_event.is_set():
-                break # Kill the loop if stop button pressed
-                
-            success, err = future.result()
-            if success:
-                status["sent"] += 1 # Increments exactly when a success happens
-            else:
-                status["errors"] += 1
+    if not proxies:
+        status["running"] = False
+        status["last_error"] = "No proxies found"
+        return
+
+    # Using 100 workers for maximum speed through bad proxies
+    with concurrent.futures.ThreadPoolExecutor(max_workers=100) as executor:
+        futures = [executor.submit(persistent_request, url, proxies) for _ in range(total)]
+        concurrent.futures.wait(futures)
 
     status["running"] = False
-    if status["sent"] >= status["total"] and not stop_event.is_set():
+    if not stop_event.is_set():
         status["finished"] = True
 
 if __name__ == "__main__":
