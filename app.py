@@ -2,15 +2,15 @@ from flask import Flask, render_template, request, jsonify
 import threading
 import time
 import random
-import requests
 import re
 import concurrent.futures
+from curl_cffi import requests  # Used to bypass TLS fingerprinting
 from fake_useragent import UserAgent
 
 app = Flask(__name__)
 ua = UserAgent()
 
-# GATEKEEPER: This lock ensures only ONE thread updates the count at a time
+# Global Controls & Safety Locks
 status_lock = threading.Lock()
 stop_event = threading.Event()
 
@@ -46,7 +46,8 @@ def scrape_proxies():
     return list(set(combined))
 
 @app.route("/")
-def index(): return render_template("index.html")
+def index():
+    return render_template("index.html")
 
 @app.route("/status")
 def get_status():
@@ -56,26 +57,33 @@ def get_status():
 @app.route("/stop", methods=["POST"])
 def stop():
     stop_event.set()
-    with status_lock: status["running"] = False
+    with status_lock:
+        status["running"] = False
     return jsonify({"ok": True})
 
 @app.route("/start", methods=["POST"])
 def start():
-    if status["running"]: return jsonify({"error": "Already running"})
+    if status["running"]:
+        return jsonify({"error": "Already running"})
+    
     data = request.json
     stop_event.clear()
+    
     with status_lock:
         status.update({
-            "sent": 0, "total": int(data.get("views", 0)), 
-            "errors": 0, "running": True, "finished": False
+            "sent": 0, 
+            "total": int(data.get("views", 0)), 
+            "errors": 0, 
+            "running": True, 
+            "finished": False
         })
+    
     threading.Thread(target=manage_execution, args=(data.get("url"), status["total"])).start()
     return jsonify({"ok": True})
 
-def persistent_worker(url, proxies_list):
-    """Retries until ONE success is achieved, then exits."""
+def stealth_worker(url, proxies_list):
+    """Retries until a successful 200 OK is recorded with Chrome impersonation."""
     while not stop_event.is_set():
-        # Check if we already hit the limit before trying
         with status_lock:
             if status["sent"] >= status["total"]:
                 return True
@@ -84,33 +92,41 @@ def persistent_worker(url, proxies_list):
         proxies = {"http": f"http://{proxy}", "https": f"http://{proxy}"}
         
         try:
-            r = requests.get(url, headers={"User-Agent": ua.random}, proxies=proxies, timeout=5)
-            if r.status_code == 200:
+            # impersonate="chrome110" makes the site think this is a real Chrome browser
+            r = requests.get(
+                url, 
+                headers={
+                    "User-Agent": ua.random,
+                    "Referer": "https://www.google.com/",
+                    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
+                },
+                proxies=proxies,
+                timeout=10,
+                impersonate="chrome110" 
+            )
+            
+            if r.status_code in [200, 204]:
                 with status_lock:
-                    # Final check inside the lock before incrementing
                     if status["sent"] < status["total"]:
                         status["sent"] += 1
-                        # If this was the final hit, signal all other threads to stop
                         if status["sent"] >= status["total"]:
-                            stop_event.set()
+                            stop_event.set() # Instant kill signal for others
                         return True
-            else:
-                with status_lock: status["errors"] += 1
         except:
             with status_lock: status["errors"] += 1
-            
-        time.sleep(0.02)
+        
+        time.sleep(0.05)
     return False
 
 def manage_execution(url, total):
     global status
     proxies = scrape_proxies()
-    with status_lock: status["proxies_loaded"] = len(proxies)
+    with status_lock:
+        status["proxies_loaded"] = len(proxies)
 
-    # Use 40 workers for high precision
-    with concurrent.futures.ThreadPoolExecutor(max_workers=40) as executor:
-        futures = [executor.submit(persistent_worker, url, proxies) for _ in range(total)]
-        # This waits until all 'total' successful hits are recorded
+    # Max workers 25 for better stability on secure sites
+    with concurrent.futures.ThreadPoolExecutor(max_workers=25) as executor:
+        futures = [executor.submit(stealth_worker, url, proxies) for _ in range(total)]
         concurrent.futures.wait(futures)
 
     with status_lock:
