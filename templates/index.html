@@ -5,12 +5,13 @@
     <style>
         body { font-family: Arial; background: #111; color: white; text-align: center; padding-top: 50px; }
         input { padding: 10px; width: 300px; margin: 5px; background: #222; color: white; border: 1px solid #444; }
-        button { padding: 12px 30px; font-size: 16px; border: none; cursor: pointer; border-radius: 5px; }
-        #startBtn { background: #00c853; color: black; font-weight: bold; }
+        button { padding: 12px 30px; font-size: 16px; border: none; cursor: pointer; border-radius: 5px; margin: 5px; font-weight: bold; }
+        #startBtn { background: #00c853; color: black; }
+        #stopBtn { background: #ff1744; color: white; display: none; }
         #startBtn:disabled { background: #333; color: #777; cursor: not-allowed; }
         #bar { width: 350px; height: 25px; border: 1px solid #444; margin: 20px auto; background: #222; border-radius: 10px; overflow: hidden; }
-        #progress { height: 100%; width: 0%; background: linear-gradient(90deg, #00c853, #b2ff59); transition: width 0.3s ease; }
-        .stats { color: #aaa; font-size: 14px; margin-top: 10px; }
+        #progress { height: 100%; width: 0%; background: #00c853; transition: width 0.2s linear; }
+        #success-msg { color: #00e676; font-weight: bold; margin-top: 20px; font-size: 18px; display: none; }
     </style>
 </head>
 <body>
@@ -20,24 +21,26 @@
 <input id="url" placeholder="https://your-site.com"><br>
 <input id="views" type="number" placeholder="Number of visits"><br>
 
-<button id="startBtn" onclick="start()">START EXECUTION</button>
+<button id="startBtn" onclick="start()">START</button>
+<button id="stopBtn" onclick="stop()">STOP</button>
 
 <div id="bar">
     <div id="progress"></div>
 </div>
 
 <p id="info">Ready</p>
-<div class="stats" id="error-log"></div>
+<div id="success-msg">The operation completed successfully enjoy!!</div>
 
 <script>
 async function start() {
     const url = document.getElementById("url").value;
     const views = document.getElementById("views").value;
-
-    if(!url || !views) return alert("Please fill all fields");
+    if(!url || !views) return;
 
     document.getElementById("startBtn").disabled = true;
-    document.getElementById("info").innerText = "Scraping Proxies & Starting...";
+    document.getElementById("stopBtn").style.display = "inline-block";
+    document.getElementById("success-msg").style.display = "none";
+    document.getElementById("progress").style.width = "0%";
 
     await fetch("/start", {
         method: "POST",
@@ -48,22 +51,31 @@ async function start() {
     poll();
 }
 
+async function stop() {
+    await fetch("/stop", { method: "POST" });
+    document.getElementById("info").innerText = "Stopped by user.";
+}
+
 async function poll() {
     const res = await fetch("/status");
     const data = await res.json();
 
     if (data.total > 0) {
+        // Precise calculation for real-time movement
         const percent = (data.sent / data.total) * 100;
         document.getElementById("progress").style.width = percent + "%";
-        document.getElementById("info").innerText = `Progress: ${data.sent} / ${data.total}`;
-        document.getElementById("error-log").innerText = `Errors: ${data.errors} | Last Error: ${data.last_error}`;
+        document.getElementById("info").innerText = `${data.sent} / ${data.total} sent successfully`;
     }
 
-    if (data.running) {
-        setTimeout(poll, 800); // Polling every 800ms for smooth updates
+    if (data.finished) {
+        document.getElementById("success-msg").style.display = "block";
+        document.getElementById("startBtn").disabled = false;
+        document.getElementById("stopBtn").style.display = "none";
+    } else if (data.running) {
+        setTimeout(poll, 400); // Faster polling for smoother movement
     } else {
         document.getElementById("startBtn").disabled = false;
-        document.getElementById("info").innerText = data.sent > 0 ? "Task Finished" : "Task Failed (Check Proxies)";
+        document.getElementById("stopBtn").style.display = "none";
     }
 }
 </script>
