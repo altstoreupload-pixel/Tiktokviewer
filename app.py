@@ -1,203 +1,118 @@
-from flask import Flask, render_template, request, jsonify
+import os
+import random
 import threading
 import time
-import random
-import requests
-import re
-import concurrent.futures
+from flask import Flask, render_template, request, jsonify
 from curl_cffi import requests
-from fake_useragent import UserAgent
 
 app = Flask(__name__)
-ua = UserAgent()
 
-status_lock = threading.Lock()
-stop_event = threading.Event()
-
-status = {
-    "running": False,
+# Global Stats Tracking
+stats = {
     "sent": 0,
     "total": 0,
     "errors": 0,
-    "finished": False,
-    "proxies_loaded": 0
+    "proxies_loaded": 0,
+    "running": False,
+    "finished": False
 }
 
-# FIXED: Added commas and high-capacity sources
-PROXY_SOURCES = [
-      "https://spys.one/en/http-proxy-list/",
-    "https://free-proxy-list.net/en/anonymous-proxy.html",
-    "https://proxylist.geonode.com/api/proxy-list?anonymityLevel=elite&protocols=socks5&limit=500&page=1&sort_by=lastChecked&sort_type=desc",
-    "https://proxylist.geonode.com/api/proxy-list?anonymityLevel=elite&limit=500&page=1&sort_by=lastChecked&sort_type=desc",
-    "https://proxylist.geonode.com/api/proxy-list?anonymityLevel=anonymous&limit=500&page=1&sort_by=lastChecked&sort_type=desc",
-    "https://proxylist.geonode.com/api/proxy-list?anonymityLevel=elite&speed=fast&limit=500&page=1&sort_by=lastChecked&sort_type=desc",
-    "https://spys.one/en/anonymous-proxy-list/",
-    "https://api.lumiproxy.com/web_v1/free-proxy/list?page_size=60&page=1&anonymity=2&language=en-us",
-    "https://api.lumiproxy.com/web_v1/free-proxy/list?page_size=60&page=1&protocol=2&anonymity=2&language=en-us",
-    "https://88.198.212.91:3128",
-    "https://89.43.31.134:3128",
-    "https://47.90.149.238:1036",
-    "https://8.213.215.187:8080",
-    "https://8.213.215.187:9098",
-    "https://8.213.156.191:8444",
-    "https://47.92.82.167:7890",
-    "https://47.91.120.190:8888",
-    "https://47.252.11.233:1081",
-    "https://39.102.213.3:9080",
-    "https://47.252.11.233:1080",
-    "https://168.195.214.41:8800",
-    "https://8.215.3.250:80",
-    "https://8.210.17.35:8082",
-    "https://8.215.3.250:3128",
-    "https://47.91.29.151:4002",
-    "https://219.93.101.63:80",
-    "https://112.198.132.199:8082",
-    "https://47.90.149.238:9098",
-    "https://103.118.85.144:8080",
-    "https://8.213.222.247:6379",
-    "https://103.156.14.227:8080",
-    "https://47.237.107.41:3128",
-    "https://8.220.136.174:4567",
-    "https://157.10.89.203:8880",
-    "https://43.230.129.23:8080",
-    "https://87.239.31.42:80",
-    "https://raw.githubusercontent.com/TheSpeedX/SOCKS-List/master/http.txt",
-    "https://raw.githubusercontent.com/monosans/proxy-list/main/proxies/http.txt",
-    "https://raw.githubusercontent.com/ShiftyTR/Proxy-List/master/http.txt",
-    "https://api.proxyscrape.com/v2/?request=getproxies&protocol=http&timeout=10000&country=all&ssl=all&anonymity=all",
-    "https://proxylist.geonode.com/api/proxy-list?limit=500&page=1&sort_by=lastChecked&sort_type=desc",
-    "https://www.proxy-list.download/api/v1/get?type=http",
-    "https://www.proxyscan.io/download?type=http",
-    "https://spys.me/proxy.txt",
-    "https://8.220.204.215:9200"
-]
+def get_random_proxy():
+    """Efficiently picks one proxy from the file without loading everything into RAM."""
+    if not os.path.exists("proxies.txt"):
+        return None
+    try:
+        with open("proxies.txt", "r") as f:
+            lines = f.readlines()
+            if not lines: return None
+            return random.choice(lines).strip()
+    except Exception as e:
+        print(f"Read Error: {e}")
+        return None
 
-# Real-world referral sources
-REFERRERS = [
-   "https://www.google.com/search?q=tiktok+trending",
-    "https://www.tiktok.com/discover?lang=en",
-    "https://www.tiktok.com/search?q=foryou",
-    "https://www.tiktok.com/@ahmed_elfallah",
-    "https://web.whatsapp.com/",
-    "https://www.youtube.com",
-    "https://linktr.ee/",
-    "https://t.co/", # Twitter/X shortener
-    "https://www.facebook.com/"
+def worker_logic(target_url, total_views):
+    """Main execution thread for handling views via proxies."""
+    global stats
+    
+    # Update total proxy count for the UI
+    if os.path.exists("proxies.txt"):
+        with open("proxies.txt", "r") as f:
+            stats["proxies_loaded"] = sum(1 for _ in f)
 
-]
-
-def scrape_proxies():
-    combined = []
-    # Adding your manual list here first
-    manual_ips = [
-        "88.198.212.91:3128", "89.43.31.134:3128", "47.90.149.238:1036",
-        "8.213.215.187:8080", "8.213.215.187:9098", "8.213.156.191:8444",
-        "47.92.82.167:7890", "47.91.120.190:8888", "47.252.11.233:1081",
-        "39.102.213.3:9080", "47.252.11.233:1080", "168.195.214.41:8800"
+    # Real-world referral sources to mimic organic traffic
+    referrers = [
+        "https://www.google.com/", "https://www.tiktok.com/", 
+        "https://t.co/", "https://www.facebook.com/"
     ]
-    combined.extend(manual_ips)
 
-    for url in PROXY_SOURCES:
-        try:
-            # We use a longer timeout for scraping to get more results
-            res = requests.get(url, timeout=10)
-            found = re.findall(r'\d+\.\d+\.\d+\.\d+:\d+', res.text)
-            combined.extend(found)
-        except: continue
-    
-    # Remove duplicates
-    final_list = list(set(combined))
-    print(f"CRITICAL DEBUG: Total unique proxies loaded: {len(final_list)}", flush=True)
-    return final_list
-
-@app.route("/")
-def index(): return render_template("index.html")
-
-@app.route("/status")
-def get_status():
-    with status_lock: return jsonify(status)
-
-@app.route("/stop", methods=["POST"])
-def stop():
-    stop_event.set()
-    with status_lock: status["running"] = False
-    return jsonify({"ok": True})
-
-@app.route("/start", methods=["POST"])
-def start():
-    if status["running"]: return jsonify({"error": "Already running"})
-    data = request.json
-    stop_event.clear()
-    with status_lock:
-        status.update({"sent": 0, "total": int(data.get("views", 0)), "errors": 0, "running": True, "finished": False})
-    threading.Thread(target=manage_execution, args=(data.get("url"), status["total"])).start()
-    return jsonify({"ok": True})
-
-def human_worker(url, proxies_list):
-    """Koyeb-specific worker with enhanced error reporting."""
-    session = requests.Session() # Using a session is faster on cloud hosts
-    
-    while not stop_event.is_set():
-        with status_lock:
-            if status["sent"] >= status["total"]: return True
-
-        # For testing: 50% chance to use proxy, 50% direct
-        # This helps identify if the proxies are the problem or the server
-        use_proxy = random.choice([True, False])
-        proxy = random.choice(proxies_list) if (proxies_list and use_proxy) else None
-        
-        proxy_config = {"http": f"http://{proxy}", "https": f"http://{proxy}"} if proxy else None
-        
-        headers = {
-            "User-Agent": ua.random,
-            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8",
-            "Accept-Language": "en-US,en;q=0.5",
-            "Connection": "keep-alive",
-            "Upgrade-Insecure-Requests": "1"
-        }
-
-        try:
-            # timeout=5 is better for Koyeb to keep threads moving
-            r = session.get(
-                url, 
-                headers=headers, 
-                proxies=proxy_config, 
-                timeout=5,
-                verify=False # Prevents SSL handshake failures on cloud containers
-            )
+    # Use a thread pool or simple loop based on target volume
+    for _ in range(total_views):
+        if not stats["running"]: break
             
-            # This logs into your Koyeb "Logs" tab
-            print(f"KOYEB DEBUG: {url} | Status: {r.status_code} | Proxy: {use_proxy}", flush=True)
-
-            if r.status_code == 200:
-                with status_lock:
-                    if status["sent"] < status["total"]:
-                        status["sent"] += 1
-                        if status["sent"] >= status["total"]: stop_event.set()
-                        return True
-            else:
-                with status_lock: status["errors"] += 1
-        except Exception as e:
-            # If you see "Connection Refused" here, Koyeb is blocking the outbound port
-            print(f"KOYEB ERROR: {str(e)[:50]}", flush=True)
-            with status_lock: status["errors"] += 1
+        success = False
+        retries = 0
         
-        time.sleep(0.5)
-    return False
+        while not success and retries < 2: # Try up to 2 different proxies per view
+            p_raw = get_random_proxy()
+            if not p_raw: break
+                
+            proxies = {"http": f"http://{p_raw}", "https": f"http://{p_raw}"}
+            headers = {
+                "Referer": random.choice(referrers),
+                "Accept-Language": "en-US,en;q=0.9"
+            }
+            
+            try:
+                # impersonate="chrome110" handles the TLS fingerprint bypass
+                resp = requests.get(
+                    target_url, 
+                    headers=headers,
+                    proxies=proxies, 
+                    impersonate="chrome110", 
+                    timeout=10
+                )
+                
+                if resp.status_code in [200, 204]:
+                    stats["sent"] += 1
+                    success = True
+                else:
+                    stats["errors"] += 1
+                    retries += 1
+            except:
+                stats["errors"] += 1
+                retries += 1
+        
+        # Micro-sleep to prevent CPU spiking on Koyeb
+        time.sleep(0.05)
 
-def manage_execution(url, total):
-    global status
-    proxies = scrape_proxies()
-    with status_lock: status["proxies_loaded"] = len(proxies)
+    stats["running"] = False
+    stats["finished"] = True
 
-    with concurrent.futures.ThreadPoolExecutor(max_workers=15) as executor:
-        futures = [executor.submit(human_worker, url, proxies) for _ in range(total)]
-        concurrent.futures.wait(futures)
+@app.route('/')
+def index():
+    return render_template('index.html')
 
-    with status_lock:
-        status["running"] = False
-        if status["sent"] >= total: status["finished"] = True
+@app.route('/start', methods=['POST'])
+def start():
+    data = request.json
+    if stats["running"]:
+        return jsonify({"ok": False, "error": "Already running"})
+    
+    stats.update({"sent": 0, "errors": 0, "total": int(data.get("views", 0)), "running": True, "finished": False})
+    
+    threading.Thread(target=worker_logic, args=(data.get("url"), stats["total"])).start()
+    return jsonify({"ok": True})
+
+@app.route('/status')
+def get_status():
+    return jsonify(stats)
+
+@app.route('/stop', methods=['POST'])
+def stop():
+    stats["running"] = False
+    return jsonify({"ok": True})
 
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=8000)
-
+    # Koyeb requires binding to 0.0.0.0
+    port = int(os.environ.get("PORT", 8000))
+    app.run(host="0.0.0.0", port=port)
