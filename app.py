@@ -11,18 +11,18 @@ app = Flask(__name__)
 ua = UserAgent()
 
 # Global Controls
+status_lock = threading.Lock() # Prevents multiple threads from updating the counter at once
 stop_event = threading.Event()
+
 status = {
     "running": False,
     "sent": 0,
     "total": 0,
     "errors": 0,
-    "last_error": "None",
-    "proxies_loaded": 0,
-    "finished": False
+    "finished": False,
+    "proxies_loaded": 0
 }
 
-# High-quality free proxy sources
 PROXY_SOURCES = [
     "https://spys.one/en/http-proxy-list/",
     "https://free-proxy-list.net/en/anonymous-proxy.html",
@@ -51,12 +51,14 @@ def index():
 
 @app.route("/status")
 def get_status():
-    return jsonify(status)
+    with status_lock:
+        return jsonify(status)
 
 @app.route("/stop", methods=["POST"])
 def stop():
     stop_event.set()
-    status["running"] = False
+    with status_lock:
+        status["running"] = False
     return jsonify({"ok": True})
 
 @app.route("/start", methods=["POST"])
@@ -66,64 +68,66 @@ def start():
     
     data = request.json
     stop_event.clear()
-    status.update({
-        "sent": 0, 
-        "total": int(data.get("views", 0)), 
-        "errors": 0, 
-        "running": True, 
-        "finished": False,
-        "last_error": "None"
-    })
+    
+    with status_lock:
+        status.update({
+            "sent": 0, 
+            "total": int(data.get("views", 0)), 
+            "errors": 0, 
+            "running": True, 
+            "finished": False
+        })
     
     threading.Thread(target=manage_execution, args=(data.get("url"), status["total"])).start()
     return jsonify({"ok": True})
 
 def persistent_request(url, proxies_list):
-    """Retries with different proxies until success or the hard limit is hit."""
-    # Safety: Stop if user hits stop OR if another thread already finished the job
-    while not stop_event.is_set() and status["sent"] < status["total"]:
-        proxy_str = random.choice(proxies_list) if proxies_list else None
-        proxies = {"http": f"http://{proxy_str}", "https": f"http://{proxy_str}"}
+    """Retries until a successful hit is recorded or system is stopped."""
+    while not stop_event.is_set():
+        # Hard check: stop if we already reached the goal
+        with status_lock:
+            if status["sent"] >= status["total"]:
+                return True
+
+        proxy = random.choice(proxies_list) if proxies_list else None
+        proxies = {"http": f"http://{proxy}", "https": f"http://{proxy}"}
         
         try:
-            # Short timeout to skip dead proxies fast
-            with requests.get(url, headers={"User-Agent": ua.random}, proxies=proxies, timeout=5, allow_redirects=True) as r:
-                if r.status_code == 200:
-                    # Thread-safe check before incrementing
+            r = requests.get(url, headers={"User-Agent": ua.random}, proxies=proxies, timeout=5, allow_redirects=True)
+            if r.status_code == 200:
+                with status_lock:
                     if status["sent"] < status["total"]:
                         status["sent"] += 1
-                        return True
-                else:
-                    status["errors"] += 1
+                        return True # Exit loop on success
+            else:
+                with status_lock: status["errors"] += 1
         except:
-            status["errors"] += 1
-            
-        time.sleep(0.01) # Small pause to prevent CPU locking
+            with status_lock: status["errors"] += 1
+        
+        time.sleep(0.01)
     return False
 
 def manage_execution(url, total):
     global status
     proxies = scrape_proxies()
-    status["proxies_loaded"] = len(proxies)
+    with status_lock:
+        status["proxies_loaded"] = len(proxies)
 
-    if not proxies:
-        status["running"] = False
-        status["last_error"] = "No proxies found"
-        return
-
-    # Use 50 workers for high-speed concurrency
+    # 50 workers for high speed
     with concurrent.futures.ThreadPoolExecutor(max_workers=50) as executor:
         futures = [executor.submit(persistent_request, url, proxies) for _ in range(total)]
         
-        # Monitor threads and kill if limit reached
+        # Monitor for completion
         for _ in concurrent.futures.as_completed(futures):
-            if status["sent"] >= total or stop_event.is_set():
-                stop_event.set() # Trigger immediate stop for all active loops
-                break
+            with status_lock:
+                if status["sent"] >= total or stop_event.is_set():
+                    stop_event.set() # Kill remaining retries
+                    break
 
-    status["running"] = False
-    if status["sent"] >= total:
-        status["finished"] = True
+    with status_lock:
+        status["running"] = False
+        if status["sent"] >= total:
+            status["finished"] = True
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=8000)
