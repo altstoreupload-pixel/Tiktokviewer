@@ -1,48 +1,80 @@
 from flask import Flask, render_template, request, jsonify
-import time
 import threading
+import time
+import random
+import requests
 
 app = Flask(__name__)
 
-# Shared variable to track progress
-progress_data = {
+# =========================
+# LOAD PROXIES FROM FILE
+# =========================
+def load_proxies():
+    try:
+        with open("proxies.txt", "r") as f:
+            return [line.strip() for line in f if line.strip()]
+    except FileNotFoundError:
+        return []
+
+PROXIES = load_proxies()
+
+status = {
     "running": False,
-    "progress": 0,
-    "target": 0
+    "sent": 0,
+    "total": 0
 }
 
-def send_views(video_url, target_views):
-    """Simulate sending views to your website"""
-    progress_data["running"] = True
-    progress_data["progress"] = 0
-    progress_data["target"] = target_views
-    
-    for i in range(1, target_views + 1):
-        time.sleep(0.1)  # simulate sending a view
-        progress_data["progress"] = i
-    
-    progress_data["running"] = False
 
-@app.route('/')
+@app.route("/")
 def index():
     return render_template("index.html")
 
-@app.route('/start', methods=['POST'])
+
+@app.route("/status")
+def get_status():
+    return jsonify(status)
+
+
+@app.route("/start", methods=["POST"])
 def start():
+    if status["running"]:
+        return jsonify({"error": "Already running"})
+
     data = request.json
-    video_url = data.get("video_url")
-    target_views = int(data.get("target_views", 0))
-    
-    if progress_data["running"]:
-        return jsonify({"status": "running"})
-    
-    thread = threading.Thread(target=send_views, args=(video_url, target_views))
+    url = data.get("url")
+    total = int(data.get("views", 0))
+
+    if not url or total <= 0:
+        return jsonify({"error": "Invalid input"})
+
+    thread = threading.Thread(target=send_requests, args=(url, total))
     thread.start()
-    return jsonify({"status": "started"})
 
-@app.route('/progress')
-def progress():
-    return jsonify(progress_data)
+    return jsonify({"ok": True})
 
-if __name__ == '__main__':
-    app.run(host='0.0.0.0', port=5000)
+
+def send_requests(url, total):
+    global PROXIES
+    PROXIES = load_proxies()  # reload every run
+
+    status["running"] = True
+    status["sent"] = 0
+    status["total"] = total
+
+    for _ in range(total):
+        proxy = random.choice(PROXIES) if PROXIES else None
+        proxies = {"http": proxy, "https": proxy} if proxy else None
+
+        try:
+            requests.get(url, proxies=proxies, timeout=5)
+            status["sent"] += 1
+        except:
+            pass
+
+        time.sleep(0.1)
+
+    status["running"] = False
+
+
+if __name__ == "__main__":
+    app.run(host="0.0.0.0", port=8000)
